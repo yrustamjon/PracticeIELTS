@@ -9,6 +9,7 @@ GroupSchema = inline_serializer(
         "start_ms": serializers.IntegerField(),
         "end_ms": serializers.IntegerField(),
         "speaker": serializers.CharField(),
+        "word_count": serializers.IntegerField(required=False),
     },
 )
 SessionSchema = inline_serializer(

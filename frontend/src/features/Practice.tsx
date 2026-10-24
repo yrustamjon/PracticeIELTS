@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Headphones,
   CheckCheck,
+  FileText,
 } from "lucide-react";
 import { api, post, type Session, type Comparison } from "../services/api";
 import { Loading, ErrorState, PageTitle } from "../components/ui";
@@ -256,6 +257,14 @@ function Workspace({ initial }: { initial: Session }) {
                 Play the audio as many times as you need, then write the
                 complete passage.
               </p>
+              {session.difficulty === "easy" &&
+                interval.word_count !== undefined && (
+                  <div className="expected-word-count">
+                    <FileText size={17} />
+                    <strong>{interval.word_count} words to listen for</strong>
+                    <span>Easy mode</span>
+                  </div>
+                )}
               <textarea
                 id="answer"
                 value={answer}
@@ -271,7 +280,9 @@ function Workspace({ initial }: { initial: Session }) {
               />
               <div className="editor-bottom">
                 <span>
-                  {answer.trim() ? answer.trim().split(/\s+/).length : 0} words
+                  {session.difficulty === "easy"
+                    ? "Take it one chunk at a time."
+                    : "Listen closely, then write the complete passage."}
                 </span>
                 <span>Your answer is saved automatically</span>
               </div>

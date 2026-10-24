@@ -30,6 +30,8 @@ import {
 import { useAuth } from "../stores/auth";
 import { api, post, restore, type User } from "../services/api";
 import { Loading, ErrorState } from "../components/ui";
+import { MockLibrary, MockPage, MockResults } from "../features/Mock";
+import { FutureModule } from "../features/Learning";
 import { Dashboard } from "../features/Dashboard";
 import { Library, MaterialDetail } from "../features/Library";
 import { Practice } from "../features/Practice";
@@ -39,7 +41,6 @@ import {
   Mistakes,
   Transcript,
   Profile,
-  MockTests,
 } from "../features/Learning";
 
 function Brand() {
@@ -150,6 +151,20 @@ function Shell() {
             </NavLink>
           ))}
         </nav>
+        <div className="future-nav">
+          <span>COMING LATER</span>
+          {[
+            ["reading", "Reading"],
+            ["writing", "Writing"],
+            ["speaking", "Speaking"],
+          ].map(([key, title]) => (
+            <NavLink key={key} to={`/future/${key}`}>
+              <BookOpen size={17} />
+              {title}
+              <small>Future</small>
+            </NavLink>
+          ))}
+        </div>
         {user.can_edit && (
           <div className="admin-nav">
             <NavLink to="/admin">
@@ -361,7 +376,10 @@ export function App() {
         <Route path="transcript/:id" element={<Transcript />} />
         <Route path="progress" element={<ProgressPage />} />
         <Route path="mistakes" element={<Mistakes />} />
-        <Route path="mock-tests" element={<MockTests />} />
+        <Route path="mock-tests" element={<MockLibrary />} />
+        <Route path="mock/:id" element={<MockPage />} />
+        <Route path="mock/:id/results" element={<MockResults />} />
+        <Route path="future/:module" element={<FutureModule />} />
         <Route path="profile" element={<Profile />} />
         <Route path="admin" element={<Admin />} />
         <Route path="admin/:id" element={<Admin />} />

@@ -261,3 +261,44 @@ export function MockTests() {
     </>
   );
 }
+
+export function FutureModule() {
+  const { module } = useParams();
+  const user = useAuth((s) => s.user);
+  const title =
+    (
+      {
+        reading: "Reading",
+        writing: "Writing",
+        speaking: "Speaking",
+      } as Record<string, string>
+    )[module || ""] || "Future module";
+  return (
+    <>
+      <PageTitle
+        eyebrow="FUTURE MODULE"
+        title={title}
+        description="Listening comes first. This module will become available in a later release."
+      />
+      <section className="panel">
+        <Empty
+          title={`${title} is planned`}
+          description={
+            user?.can_edit
+              ? "Content creation for this module is not available yet. Use Content Studio for Listening mock materials."
+              : "This module is not open for practice or content uploads yet. Start with Listening."
+          }
+          action={
+            <Link
+              className="button primary"
+              to={user?.can_edit ? "/admin" : "/library"}
+            >
+              Open Listening
+              <Headphones size={17} />
+            </Link>
+          }
+        />
+      </section>
+    </>
+  );
+}

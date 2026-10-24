@@ -30,6 +30,7 @@ import {
 import { useAuth } from "../stores/auth";
 import { Loading, ErrorState, Empty, PageTitle } from "../components/ui";
 import { AudioPlayer } from "../components/AudioPlayer";
+import { QuestionStudio } from "./QuestionStudio";
 export function Admin() {
   const user = useAuth((s) => s.user);
   if (!user?.can_edit) return <Navigate to="/" replace />;
@@ -357,7 +358,7 @@ function MaterialEditor({ id }: { id: string }) {
   if (query.error) return <ErrorState error={query.error} />;
   return (
     <Editor
-      key={`${id}-${query.data.version_id}`}
+      key={id}
       material={query.data}
       onSaved={() => {
         void cache.invalidateQueries({ queryKey: ["admin-material", id] });
@@ -376,27 +377,55 @@ function Editor({
   onSaved: () => void;
 }) {
   const [segments, setSegments] = useState<Segment[]>(
-    m.segments.length
-      ? m.segments
-      : [
-          {
-            text: "",
-            speaker: "",
-            start_ms: 0,
-            end_ms: m.audio?.duration_ms || 1000,
-          },
-        ],
+    m.transcript_audio_id && m.audio?.id !== m.transcript_audio_id
+      ? []
+      : m.segments,
   );
   const [error, setError] = useState<unknown>();
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState(false);
   const [audio, setAudio] = useState(m.audio);
   const [dirty, setDirty] = useState(false);
   const [detailsDirty, setDetailsDirty] = useState(false);
+  const [questionDirty, setQuestionDirty] = useState(false);
+  const [reference, setReference] = useState("");
+  const [referenceFile, setReferenceFile] = useState<File | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [reviewed, setReviewed] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [playRequest, setPlayRequest] = useState(0);
+  const cache = useQueryClient();
+  const jobQuery = useQuery({
+    queryKey: ["processing", m.id],
+    queryFn: () =>
+      api<import("../services/api").ProcessingJob | null>(
+        `materials/${m.id}/processing/`,
+      ),
+    enabled: !!audio,
+    refetchInterval: (q) =>
+      q.state.data && ["queued", "running"].includes(q.state.data.state)
+        ? 2000
+        : false,
+  });
+  const job = jobQuery.data ?? m.processing;
+  const working = !!job && ["queued", "running"].includes(job.state);
+  useEffect(() => {
+    if (!dirty)
+      setSegments(
+        m.transcript_audio_id && m.audio?.id !== m.transcript_audio_id
+          ? []
+          : m.segments,
+      );
+    if (m.audio) setAudio(m.audio);
+    setReviewed(false);
+  }, [m.version_id, m.audio?.id, m.transcript_audio_id]);
+  useEffect(() => {
+    if (job?.state === "succeeded" && job.result_version !== m.version_id)
+      onSaved();
+  }, [job?.state, job?.result_version, m.version_id]);
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      (dirty || detailsDirty) &&
+      (dirty || detailsDirty || questionDirty) &&
       currentLocation.pathname !== nextLocation.pathname,
   );
   useEffect(() => {
@@ -407,14 +436,14 @@ function Editor({
   }, [blocker]);
   useEffect(() => {
     function warn(e: BeforeUnloadEvent) {
-      if (dirty || detailsDirty) {
+      if (dirty || detailsDirty || questionDirty) {
         e.preventDefault();
         e.returnValue = "";
       }
     }
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty, detailsDirty]);
+  }, [dirty, detailsDirty, questionDirty]);
   async function run(action: () => Promise<unknown>, success: string) {
     setBusy(true);
     setError(undefined);
@@ -422,8 +451,8 @@ function Editor({
     try {
       await action();
       setMessage(success);
-    } catch (err) {
-      setError(err);
+    } catch (e) {
+      setError(e);
     } finally {
       setBusy(false);
     }
@@ -443,36 +472,89 @@ function Editor({
       onSaved();
     }, "Details saved.");
   }
+  async function upload(e: FormEvent) {
+    e.preventDefault();
+    if (!audioFile) return;
+    await run(async () => {
+      const data = new FormData();
+      data.append("file", audioFile);
+      if (reference.trim()) data.append("reference_text", reference);
+      if (referenceFile) data.append("reference_file", referenceFile);
+      const result = await api<
+        NonNullable<Material["audio"]> & {
+          processing: import("../services/api").ProcessingJob;
+        }
+      >(`materials/${m.id}/audio/`, { method: "POST", body: data });
+      setAudio(result);
+      setSegments([]);
+      setDirty(false);
+      setReviewed(false);
+      setPreviewIndex(null);
+      setAudioFile(null);
+      cache.setQueryData(["processing", m.id], result.processing);
+      void jobQuery.refetch();
+      onSaved();
+    }, "Audio uploaded. The transcript and dictation chunks are being prepared automatically.");
+  }
+  async function retry() {
+    await run(async () => {
+      const data = reference.trim() || referenceFile ? new FormData() : null;
+      if (data) {
+        if (job?.state === "succeeded") data.append("force", "true");
+        if (reference.trim()) data.append("reference_text", reference);
+        if (referenceFile) data.append("reference_file", referenceFile);
+      }
+      const result = await api<import("../services/api").ProcessingJob>(
+        `materials/${m.id}/process/`,
+        data
+          ? { method: "POST", body: data }
+          : {
+              method: "POST",
+              body: JSON.stringify({ force: job?.state === "succeeded" }),
+            },
+      );
+      cache.setQueryData(["processing", m.id], result);
+      void jobQuery.refetch();
+    }, "Processing queued. Your audio is preserved.");
+  }
   function edit(index: number, key: keyof Segment, value: string | number) {
     setSegments((old) =>
       old.map((s, i) => (i === index ? { ...s, [key]: value } : s)),
     );
     setDirty(true);
+    setReviewed(false);
   }
+  const stageLabels: Record<string, string> = {
+    queued: "Waiting for the speech service",
+    preparing_audio: "Preparing the original audio",
+    loading_model: "Loading the speech model — first use can take longer",
+    transcribing: "Listening to the recording and generating word timestamps",
+    aligning_reference: "Matching the reference transcript to recognized words",
+    segmenting: "Creating sentences and playable chunks",
+    saving_version: "Saving a version for your review",
+    ready_for_review: "Transcript and practice ready for review",
+    failed: "Processing needs attention",
+    retry_wait: "Waiting to retry",
+  };
   return (
     <>
-      <Link
-        className="back-link"
-        to="/admin"
-        onClick={(e) => {
-          if (
-            dirty &&
-            !window.confirm("Leave with unsaved transcript changes?")
-          )
-            e.preventDefault();
-        }}
-      >
+      <Link className="back-link" to="/admin">
         <ArrowLeft size={17} />
         Back to Content Studio
       </Link>
       <PageTitle
-        eyebrow="CONTENT STUDIO / MATERIAL EDITOR"
+        eyebrow="CONTENT STUDIO / UPLOAD ONCE"
         title={m.title}
-        description="Prepare the audio. Refine the transcript. Share something worth listening to."
+        description="Upload a mock recording. Review its transcript. Practice levels are prepared automatically."
         action={<span className={`status-badge ${m.status}`}>{m.status}</span>}
       />
       <div className="wizard-steps">
-        {["Details", "Audio", "Transcript", "Review & publish"].map((s, i) => (
+        {[
+          "Mock details",
+          "Upload recording",
+          "Questions / PDF",
+          "Review & publish",
+        ].map((s, i) => (
           <div key={s}>
             <span>{i + 1}</span>
             {s}
@@ -480,7 +562,7 @@ function Editor({
           </div>
         ))}
       </div>
-      {error != null && <ErrorState error={error} />}{" "}
+      {error != null && <ErrorState error={error} />}
       {message && (
         <div className="success" role="status">
           <Check size={18} />
@@ -491,7 +573,7 @@ function Editor({
         <div>
           <section className="panel form-panel">
             <h2>
-              <span className="step-number">1</span>Material details
+              <span className="step-number">1</span>Mock details
             </h2>
             <form
               className="form-grid"
@@ -515,7 +597,7 @@ function Editor({
                 <input
                   name="source"
                   defaultValue={m.source}
-                  placeholder="e.g. Original recording by…"
+                  placeholder="Original or authorized source"
                   required
                 />
               </label>
@@ -524,7 +606,7 @@ function Editor({
                 <input
                   name="license"
                   defaultValue={m.license}
-                  placeholder="e.g. CC BY 4.0 or self-owned"
+                  placeholder="Your ownership or permission"
                   required
                 />
               </label>
@@ -534,7 +616,7 @@ function Editor({
                   name="rights_confirmed"
                   defaultChecked={m.rights_confirmed}
                 />
-                I own this content or have permission to share it.
+                I own this material or have permission to share it.
               </label>
               <div className="full">
                 <button className="button secondary" disabled={busy}>
@@ -546,53 +628,81 @@ function Editor({
           </section>
           <section className="panel form-panel">
             <h2>
-              <span className="step-number">2</span>Listening audio
+              <span className="step-number">2</span>Upload the recording once
             </h2>
             <p className="muted">
-              Upload your original recording. MP3, WAV, M4A, OGG or FLAC · up to
-              100 MB.
+              The site transcribes your audio and creates sentence/chunk
+              boundaries. An existing transcript is optional.
             </p>
-            <label className="upload-zone">
-              <Upload size={29} />
-              <strong>
-                {audio
-                  ? "Replace audio recording"
-                  : "Choose an audio recording"}
-              </strong>
-              <span>
-                Validated privately before it becomes available to students.
-              </span>
-              <input
-                aria-label="Upload audio"
-                type="file"
-                accept=".mp3,.wav,.m4a,.ogg,.flac"
-                disabled={busy}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const data = new FormData();
-                    data.append("file", file);
-                    void run(async () => {
-                      const a = await api<NonNullable<Material["audio"]>>(
-                        `materials/${m.id}/audio/`,
-                        { method: "POST", body: data },
-                      );
-                      setAudio(a);
-                      if (!m.segments.length)
-                        setSegments([
-                          {
-                            text: "",
-                            speaker: "",
-                            start_ms: 0,
-                            end_ms: a.duration_ms,
-                          },
-                        ]);
-                      setDirty(true);
-                    }, "Audio uploaded. Review and save transcript timing for this audio.");
-                  }
-                }}
-              />
-            </label>
+            <form onSubmit={upload}>
+              <label className="upload-zone">
+                <Upload size={29} />
+                <strong>
+                  {audio
+                    ? "Choose replacement audio"
+                    : "Choose an audio recording"}
+                </strong>
+                <span>MP3, WAV, M4A, OGG or FLAC · up to 100 MB</span>
+                <input
+                  aria-label="Upload audio"
+                  type="file"
+                  accept=".mp3,.wav,.m4a,.ogg,.flac"
+                  disabled={busy || working}
+                  onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
+                />
+              </label>
+              <details className="optional-transcript">
+                <summary>I already have the transcript (optional)</summary>
+                <p className="muted">
+                  Paste the authoritative text or upload a TXT/text-based PDF.
+                  Leave both empty to generate the transcript from audio.
+                </p>
+                <label>
+                  Reference transcript
+                  <textarea
+                    aria-label="Reference transcript"
+                    value={reference}
+                    rows={4}
+                    onChange={(e) => setReference(e.target.value)}
+                    placeholder="Optional: the exact words in your recording…"
+                    maxLength={100000}
+                  />
+                </label>
+                <label>
+                  Transcript file
+                  <input
+                    aria-label="Transcript file"
+                    type="file"
+                    accept=".txt,.pdf"
+                    onChange={(e) =>
+                      setReferenceFile(e.target.files?.[0] || null)
+                    }
+                    disabled={!!reference.trim()}
+                  />
+                </label>
+              </details>
+              <div className="editor-actions">
+                <button
+                  className="button primary"
+                  disabled={!audioFile || busy || working}
+                >
+                  <Upload size={16} />
+                  {busy
+                    ? "Uploading…"
+                    : "Upload & create Practice automatically"}
+                </button>
+                {audio && (
+                  <button
+                    type="button"
+                    className="button secondary"
+                    disabled={busy || working}
+                    onClick={() => void retry()}
+                  >
+                    Regenerate from this audio
+                  </button>
+                )}
+              </div>
+            </form>
             {audio && (
               <>
                 <div className="audio-file-meta">
@@ -600,102 +710,193 @@ function Editor({
                   {(audio.size / 1024 / 1024).toFixed(2)} MB ·{" "}
                   {(audio.duration_ms / 1000).toFixed(1)} seconds
                 </div>
-                <AudioPlayer url={audio.stream_url} />
+                <AudioPlayer
+                  url={audio.stream_url}
+                  start={
+                    previewIndex === null
+                      ? 0
+                      : segments[previewIndex]?.start_ms || 0
+                  }
+                  end={
+                    previewIndex === null
+                      ? undefined
+                      : segments[previewIndex]?.end_ms
+                  }
+                  playRequest={playRequest}
+                />
               </>
             )}
+            {job && (
+              <div className={`processing-status ${job.state}`} role="status">
+                <div className="processing-status-title">
+                  {working ? (
+                    <span className="processing-spinner" />
+                  ) : (
+                    <Check size={18} />
+                  )}
+                  <strong>{stageLabels[job.stage] || job.stage}</strong>
+                </div>
+                {job.state === "failed" ? (
+                  <>
+                    <p>{job.error_message}</p>
+                    <button
+                      className="button secondary"
+                      disabled={busy}
+                      onClick={() => void retry()}
+                    >
+                      Retry processing
+                    </button>
+                  </>
+                ) : (
+                  <p>
+                    {working
+                      ? "Your upload is saved. You can leave this page and return while the worker prepares the transcript."
+                      : "Listen to the generated segments below and approve the transcript before publishing."}
+                  </p>
+                )}
+              </div>
+            )}
+            {jobQuery.error && <ErrorState error={jobQuery.error} />}
           </section>
+          <QuestionStudio
+            materialId={m.id}
+            audioReady={!!audio}
+            audioId={audio?.id}
+            onSaved={onSaved}
+            onDirty={setQuestionDirty}
+          />
           <section className="panel form-panel">
             <div className="section-title">
               <h2>
-                <span className="step-number">3</span>Manual transcript
+                <span className="step-number">4</span>Review generated
+                transcript
               </h2>
-              <span className="pill">{segments.length} segments</span>
+              <span className="pill">{segments.length} sentences</span>
             </div>
-            <p className="muted">
-              Enter the reference text and segment boundaries in seconds.
-              Original audio is preserved. Automatic transcription and alignment
-              are planned for the next milestone.
-            </p>
-            <div className="segment-editor-list">
-              {segments.map((s, i) => (
-                <div className="segment-editor" key={i}>
-                  <div className="segment-editor-number">
-                    {String(i + 1).padStart(2, "0")}
+            {!segments.length ? (
+              <div className="small-empty">
+                {working
+                  ? "Sentences will appear automatically when processing finishes."
+                  : "Upload audio to generate your first transcript. No manual timestamps are required."}
+              </div>
+            ) : (
+              <>
+                <p className="muted">
+                  Play each sentence and correct any recognition errors. Easy
+                  chunks, single-sentence Medium, and continuous Hard practice
+                  use the same recording.
+                </p>
+                {m.transcript_warnings?.map((warning, i) => (
+                  <div className="hint-box" key={i}>
+                    {warning}
                   </div>
-                  <div className="segment-editor-fields">
-                    <label>
-                      Transcript
-                      <textarea
-                        aria-label={`Segment ${i + 1} text`}
-                        value={s.text}
-                        rows={2}
-                        onChange={(e) => edit(i, "text", e.target.value)}
-                        placeholder="What is said in this segment?"
-                      />
-                    </label>
-                    <div className="segment-timing">
-                      <label>
-                        Start (seconds)
-                        <input
-                          aria-label={`Segment ${i + 1} start`}
-                          type="number"
-                          min="0"
-                          step="0.001"
-                          value={s.start_ms / 1000}
-                          onChange={(e) =>
-                            edit(
-                              i,
-                              "start_ms",
-                              Math.round(Number(e.target.value) * 1000),
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        End (seconds)
-                        <input
-                          aria-label={`Segment ${i + 1} end`}
-                          type="number"
-                          min="0"
-                          step="0.001"
-                          value={s.end_ms / 1000}
-                          onChange={(e) =>
-                            edit(
-                              i,
-                              "end_ms",
-                              Math.round(Number(e.target.value) * 1000),
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Speaker
-                        <input
-                          aria-label={`Segment ${i + 1} speaker`}
-                          value={s.speaker}
-                          onChange={(e) => edit(i, "speaker", e.target.value)}
-                          placeholder="Optional"
-                        />
-                      </label>
-                      <button
-                        className="icon-button"
-                        aria-label={`Remove segment ${i + 1}`}
-                        disabled={segments.length === 1}
-                        onClick={() => {
-                          setSegments((old) =>
-                            old.filter((_, index) => index !== i),
-                          );
-                          setDirty(true);
-                        }}
-                      >
-                        <Trash2 size={17} />
-                      </button>
+                ))}
+                <div className="segment-editor-list">
+                  {segments.map((s, i) => (
+                    <div
+                      className={`segment-editor ${previewIndex === i ? "previewing" : ""}`}
+                      key={i}
+                    >
+                      <div className="segment-editor-number">
+                        {String(i + 1).padStart(2, "0")}
+                      </div>
+                      <div className="segment-editor-fields">
+                        <label>
+                          Sentence
+                          <textarea
+                            aria-label={`Segment ${i + 1} text`}
+                            rows={2}
+                            value={s.text}
+                            onChange={(e) => edit(i, "text", e.target.value)}
+                          />
+                        </label>
+                        {s.needs_review && (
+                          <span className="review-warning">
+                            Listen closely: recognition/alignment needs review.
+                          </span>
+                        )}
+                        {audio && (
+                          <button
+                            className="button subtle"
+                            disabled={working}
+                            onClick={() => {
+                              setPreviewIndex(i);
+                              setPlayRequest((n) => n + 1);
+                            }}
+                          >
+                            <Eye size={15} />
+                            Preview sentence {(s.start_ms / 1000).toFixed(1)}s –{" "}
+                            {(s.end_ms / 1000).toFixed(1)}s
+                          </button>
+                        )}
+                        <details className="advanced-timing">
+                          <summary>Adjust timing (advanced)</summary>
+                          <div className="segment-timing">
+                            <label>
+                              Start (seconds)
+                              <input
+                                aria-label={`Segment ${i + 1} start`}
+                                type="number"
+                                min="0"
+                                step=".001"
+                                value={s.start_ms / 1000}
+                                onChange={(e) =>
+                                  edit(
+                                    i,
+                                    "start_ms",
+                                    Math.round(Number(e.target.value) * 1000),
+                                  )
+                                }
+                              />
+                            </label>
+                            <label>
+                              End (seconds)
+                              <input
+                                aria-label={`Segment ${i + 1} end`}
+                                type="number"
+                                min="0"
+                                step=".001"
+                                value={s.end_ms / 1000}
+                                onChange={(e) =>
+                                  edit(
+                                    i,
+                                    "end_ms",
+                                    Math.round(Number(e.target.value) * 1000),
+                                  )
+                                }
+                              />
+                            </label>
+                          </div>
+                        </details>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="editor-actions">
+                <button
+                  className="button secondary"
+                  disabled={!dirty || busy || working}
+                  onClick={() =>
+                    void run(async () => {
+                      await api(`materials/${m.id}/transcript/`, {
+                        method: "PUT",
+                        body: JSON.stringify({ segments }),
+                      });
+                      setDirty(false);
+                      onSaved();
+                    }, "Transcript corrections saved as a new version.")
+                  }
+                >
+                  <Save size={16} />
+                  Save transcript corrections
+                </button>
+              </>
+            )}
+            <details className="optional-transcript">
+              <summary>Manual transcript entry (advanced recovery)</summary>
+              <p className="muted">
+                Use only when recovering existing content. Automatic
+                transcription is the default workflow.
+              </p>
               <button
                 className="button secondary"
                 onClick={() => {
@@ -705,110 +906,78 @@ function Editor({
                       text: "",
                       speaker: "",
                       start_ms: segments.at(-1)?.end_ms || 0,
-                      end_ms: Math.min(
-                        audio?.duration_ms || 0,
-                        (segments.at(-1)?.end_ms || 0) + 1000,
-                      ),
+                      end_ms: audio?.duration_ms || 1000,
                     },
                   ]);
                   setDirty(true);
                 }}
               >
                 <Plus size={16} />
-                Add segment
+                Add sentence manually
               </button>
-              <button
-                className="button primary"
-                disabled={busy || !audio}
-                onClick={() =>
-                  void run(async () => {
-                    await api(`materials/${m.id}/transcript/`, {
-                      method: "PUT",
-                      body: JSON.stringify({ segments }),
-                    });
-                    setDirty(false);
-                    onSaved();
-                  }, "Transcript saved as a new version.")
-                }
-              >
-                <Save size={16} />
-                Save transcript version
-              </button>
-            </div>
+            </details>
           </section>
         </div>
         <aside>
           <section className="panel publish-panel">
-            <h2>
-              <span className="step-number">4</span>Ready to share?
-            </h2>
-            <p className="muted">
-              Review the audio and transcript before publishing. Previous
-              student results keep their original transcript version.
-            </p>
+            <h2>One material. All practice levels.</h2>
             <ul className="publish-checks">
               <li>
                 <Check size={17} />
-                Add source and licensing details
+                Easy: short chunks and visible word count
               </li>
               <li>
                 <Check size={17} />
-                Upload playable audio
+                Medium: one complete sentence, no word count
               </li>
               <li>
                 <Check size={17} />
-                Check every segment and timestamp
-              </li>
-              <li>
-                <Check size={17} />
-                Save your transcript version
+                Hard: two or three sentences continuously
               </li>
             </ul>
-            <button
-              className="button secondary wide"
-              onClick={() => setPreview(!preview)}
-            >
-              <Eye size={17} />
-              Preview segments
-            </button>
+            <p className="muted">
+              The original audio stays intact. Student sessions keep the
+              transcript version they started with.
+            </p>
+            <label className="checkbox-label publish-review">
+              <input
+                type="checkbox"
+                checked={reviewed}
+                onChange={(e) => setReviewed(e.target.checked)}
+              />
+              I listened to the generated segments and reviewed the transcript.
+            </label>
             <button
               className="button primary wide"
               disabled={
-                busy || dirty || detailsDirty || !audio || !m.version_id
+                busy ||
+                working ||
+                dirty ||
+                detailsDirty ||
+                questionDirty ||
+                !reviewed ||
+                !audio ||
+                !m.version_id
               }
               onClick={() =>
                 void run(async () => {
-                  await post(`materials/${m.id}/publish/`);
+                  await post(`materials/${m.id}/publish/`, {
+                    confirm_review: true,
+                  });
                   onSaved();
-                }, "Material published. It is now available in the student library.")
+                }, "Material published. Its Practice levels are available in the student library.")
               }
             >
               <ShieldCheck size={17} />
-              Publish material
+              Approve & publish Mock + Practice
             </button>
-            {dirty && (
-              <small className="muted">
-                Save your changes before publishing.
-              </small>
+            {m.status === "published" && (
+              <Link className="button secondary wide" to={`/library/${m.id}`}>
+                <Eye size={17} />
+                Open published material
+              </Link>
             )}
           </section>
-          {preview && audio && (
-            <section className="panel preview-panel">
-              <h3>Segment preview</h3>
-              {segments.map((s, i) => (
-                <div key={i}>
-                  <p>
-                    <strong>{i + 1}.</strong> {s.text}
-                  </p>
-                  <AudioPlayer
-                    url={audio.stream_url}
-                    start={s.start_ms}
-                    end={s.end_ms}
-                  />
-                </div>
-              ))}
-            </section>
-          )}
         </aside>
       </div>
     </>

@@ -12,6 +12,14 @@ django.setup()
 from django.db import transaction
 
 from accounts.models import User
+from exams.models import (
+    AnswerKey,
+    MockAttempt,
+    Question,
+    QuestionDocument,
+    QuestionOption,
+    QuestionSet,
+)
 from learning.models import (
     AudioAsset,
     AuditLog,
@@ -21,6 +29,7 @@ from learning.models import (
     Segment,
     TranscriptVersion,
 )
+from processing.models import ProcessingJob
 
 teacher = os.environ["TEST_TEACHER"]
 student = os.environ["TEST_STUDENT"]
@@ -31,12 +40,95 @@ if sys.argv[1] == "create":
         username=teacher, password=os.environ["TEST_PASSWORD"], role="teacher"
     )
     User.objects.create_user(username=student, password=os.environ["TEST_PASSWORD"])
+elif sys.argv[1] == "seed_manual":
+    # Explicitly authored test fixture, not a simulated speech-provider output.
+    material = Material.objects.get(
+        pk=int(os.environ["TEST_MATERIAL_ID"]), owner__username=teacher
+    )
+    latest = material.processing_jobs.first()
+    if latest and latest.state in ("queued", "running"):
+        raise RuntimeError(
+            "Wait for the real processing outcome before adding the manual test fixture"
+        )
+    audio = material.audio_assets.order_by("-id").first()
+    version = TranscriptVersion.objects.create(
+        material=material, audio=audio, origin="manual"
+    )
+    Segment.objects.create(
+        version=version,
+        position=0,
+        text="Welcome to our library.",
+        start_ms=0,
+        end_ms=1700,
+    )
+    Segment.objects.create(
+        version=version,
+        position=1,
+        text="The books are upstairs.",
+        start_ms=1700,
+        end_ms=2800,
+    )
+elif sys.argv[1] == "expire_exam":
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    attempt = MockAttempt.objects.get(
+        pk=int(os.environ["TEST_ATTEMPT_ID"]),
+        user__username=student,
+        timing="timed",
+        submitted_at__isnull=True,
+    )
+    attempt.deadline = timezone.now() - timedelta(seconds=1)
+    attempt.save(update_fields=["deadline"])
+elif sys.argv[1] == "create_pdf":
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    for text in [
+        "Original question paper: 1. The books are ____. 2. Choose the level: A Upstairs, B Downstairs.",
+        "Private answer key: 1 upstairs, 2 A",
+    ]:
+        page = writer.add_blank_page(600, 800)
+        font = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            }
+        )
+        page[NameObject("/Resources")] = DictionaryObject(
+            {
+                NameObject("/Font"): DictionaryObject(
+                    {NameObject("/F1"): writer._add_object(font)}
+                )
+            }
+        )
+        stream = DecodedStreamObject()
+        stream.set_data(f"BT /F1 12 Tf 30 750 Td ({text}) Tj ET".encode())
+        page[NameObject("/Contents")] = writer._add_object(stream)
+    with open(os.environ["TEST_QUESTION_PDF"], "wb") as target:
+        writer.write(target)
 elif sys.argv[1] == "cleanup":
     with transaction.atomic():
         users = User.objects.filter(username__in=[teacher, student])
         materials = Material.objects.filter(owner__in=users)
+        MockAttempt.objects.filter(material__in=materials).delete()
         PracticeSession.objects.filter(user__in=users).delete()
-        materials.update(published_version=None)
+        materials.update(published_version=None, published_questions=None)
+        ProcessingJob.objects.filter(material__in=materials).delete()
+        AnswerKey.objects.filter(
+            question__question_set__material__in=materials
+        ).delete()
+        QuestionOption.objects.filter(
+            question__question_set__material__in=materials
+        ).delete()
+        Question.objects.filter(question_set__material__in=materials).delete()
+        QuestionSet.objects.filter(material__in=materials).delete()
+        for document in QuestionDocument.objects.filter(material__in=materials):
+            document.file.delete(save=False)
+            document.delete()
         Segment.objects.filter(version__material__in=materials).delete()
         TranscriptVersion.objects.filter(material__in=materials).delete()
         for asset in AudioAsset.objects.filter(material__in=materials):
@@ -45,7 +137,10 @@ elif sys.argv[1] == "cleanup":
         AuditLog.objects.filter(actor__in=users).delete()
         materials.delete()
         Category.objects.filter(
-            name="Everyday English " + teacher.removeprefix("teacher_")
+            name__in=[
+                "Everyday English " + teacher.removeprefix("teacher_"),
+                "Auto Speech " + teacher.removeprefix("teacher_"),
+            ]
         ).delete()
         users.delete()
 else:

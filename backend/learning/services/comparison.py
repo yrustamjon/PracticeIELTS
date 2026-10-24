@@ -45,6 +45,10 @@ def words(text, options=None):
 
 def compare(reference, answer, options=None):
     expected, actual = words(reference, options), words(answer, options)
+    if len(expected) * len(actual) > 2_000_000:
+        raise ValueError(
+            "This passage is too long for one answer check. Use Easy, Medium or Hard segments."
+        )
     rows = [[0] * (len(actual) + 1) for _ in range(len(expected) + 1)]
     for i in range(len(expected) + 1):
         rows[i][0] = i
@@ -115,10 +119,48 @@ def compare(reference, answer, options=None):
 
 
 def groups(session):
+    from processing.segmentation import easy_chunks
+
     segments = list(session.version.segments.all())
-    size = {"easy": 1, "medium": 3, "hard": 6, "full": len(segments) or 1}[
-        session.difficulty
-    ]
+    if session.grouping_version == 0:
+        size = {"easy": 1, "medium": 3, "hard": 6, "full": len(segments) or 1}[
+            session.difficulty
+        ]
+        return [
+            {
+                "start_ms": 0 if session.difficulty == "full" else chunk[0].start_ms,
+                "end_ms": session.version.audio.duration_ms
+                if session.difficulty == "full"
+                else chunk[-1].end_ms,
+                "text": " ".join(s.text for s in chunk),
+                "speaker": chunk[0].speaker,
+            }
+            for index in range(0, len(segments), size)
+            if (chunk := segments[index : index + size])
+        ]
+
+    if session.difficulty == "easy":
+        result = []
+        for segment in segments:
+            for chunk in easy_chunks(
+                {
+                    "text": segment.text,
+                    "words": segment.words,
+                    "start_ms": segment.start_ms,
+                    "end_ms": segment.end_ms,
+                }
+            ):
+                result.append(
+                    {
+                        "start_ms": chunk["start_ms"],
+                        "end_ms": chunk["end_ms"],
+                        "text": chunk["text"],
+                        "speaker": segment.speaker,
+                        "word_count": len(words(chunk["text"])),
+                    }
+                )
+        return result
+    size = {"medium": 1, "hard": 3, "full": len(segments) or 1}[session.difficulty]
     return [
         {
             "start_ms": 0 if session.difficulty == "full" else chunk[0].start_ms,

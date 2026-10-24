@@ -1,3 +1,4 @@
+import { MockSelection } from "./Mock";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -8,6 +9,7 @@ import {
 } from "react-router-dom";
 import {
   Search,
+  FileText,
   ChevronRight,
   Headphones,
   BookOpen,
@@ -228,6 +230,7 @@ export function MaterialDetail() {
   if (query.isPending) return <Loading />;
   if (query.error) return <ErrorState error={query.error} />;
   const m = query.data;
+  const mode = params.get("mode") || (m.mock_available ? "mock" : "practice");
   return (
     <>
       <button
@@ -282,21 +285,30 @@ export function MaterialDetail() {
           <p className="muted">Choose a focus that works for you today.</p>
           <div className="mode-tabs">
             <button
-              className={params.get("mode") !== "transcript" ? "active" : ""}
-              onClick={() => navigate(`/library/${id}`)}
+              className={mode === "mock" ? "active" : ""}
+              onClick={() => navigate(`/library/${id}?mode=mock`)}
+            >
+              <FileText size={18} />
+              Listening Mock
+            </button>
+            <button
+              className={mode === "practice" ? "active" : ""}
+              onClick={() => navigate(`/library/${id}?mode=practice`)}
             >
               <Headphones size={18} />
               Dictation
             </button>
             <button
-              className={params.get("mode") === "transcript" ? "active" : ""}
+              className={mode === "transcript" ? "active" : ""}
               onClick={() => navigate(`/library/${id}?mode=transcript`)}
             >
               <BookOpen size={18} />
               Transcript Study
             </button>
           </div>
-          {params.get("mode") === "transcript" ? (
+          {mode === "mock" ? (
+            <MockSelection materialId={m.id} available={!!m.mock_available} />
+          ) : mode === "transcript" ? (
             <>
               <p>
                 Listen alongside the full transcript and replay any sentence.
@@ -310,9 +322,17 @@ export function MaterialDetail() {
             <>
               <div className="difficulty-options">
                 {[
-                  ["easy", "Easy", "One sentence at a time"],
-                  ["medium", "Medium", "Up to three sentences"],
-                  ["hard", "Hard", "A longer listening segment"],
+                  [
+                    "easy",
+                    "Easy",
+                    "A short chunk or sentence · word count shown",
+                  ],
+                  ["medium", "Medium", "One complete sentence · no word count"],
+                  [
+                    "hard",
+                    "Hard",
+                    "Two or three sentences continuously · no word count",
+                  ],
                   ["full", "Full dictation", "The complete section"],
                 ].map(([key, name, desc]) => (
                   <label

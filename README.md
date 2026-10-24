@@ -1,70 +1,109 @@
 # PracticeIELTS
 
-## Quick interface demo
+A listening-first IELTS platform built with Django REST Framework, React/TypeScript, PostgreSQL, Redis and Celery. One listening material provides exam questions and automatically generated Practice. The navy/teal UI follows the supplied dashboard reference.
 
-For the standalone HTML/CSS/JS review demo, open [demo/index.html](demo/index.html). On Mac, from the repository root:
+## Real application workflow
+
+1. Create a collection and a listening material in **Admin Panel**.
+2. Save the title, source, license and permission confirmation.
+3. Upload the audio once. The worker uses a real local faster-whisper model to transcribe it and produce word timestamps. An authoritative transcript is optional: paste it or upload UTF-8 TXT / text-based PDF.
+4. Add exam questions with the form, or upload a question PDF, choose the student-visible pages and enter its answer key. PDF quick setup creates numbered answer fields; question types and answer keys require teacher review.
+5. Listen to generated sentences, correct recognition errors if necessary, confirm review and publish.
+6. Students choose **Listening Mock** (timed or untimed), **Practice**, or **Transcript Study** from the same material. A material without exam questions offers Practice only.
+
+Practice levels:
+
+- **Easy:** short word-timed chunks or one sentence; expected word count is visible.
+- **Medium:** one complete sentence; no word count.
+- **Hard:** up to three consecutive sentences; no word count.
+
+The original audio is preserved. Students cannot upload content or access editor APIs. Reading/Writing/Speaking are explicitly future modules for both roles. No copyrighted IELTS books/audio, fictional progress or default shared passwords are seeded.
+
+## Local setup (Mac / Linux)
+
+Prerequisites: Python 3.12, Node **24.15+** (tested 24.19.0; `.nvmrc`), FFmpeg/ffprobe and Docker Desktop/Compose. The first speech-model download needs Hugging Face access. No paid API key is needed.
+
+```bash
+bash infrastructure/setup.sh
+# Optional: download the speech model now rather than on the first upload.
+backend/.venv/bin/python backend/manage.py download_transcription_model
+```
+
+Setup installs frozen dependencies, preserves an existing `.env`, generates local development secrets only if missing, starts PostgreSQL/Redis, runs migrations and builds React. Cache paths are project-local and work on Mac. The app loads the root `.env` automatically without overriding injected runtime variables. With `POSTGRES_PASSWORD` set and no explicit `DATABASE_URL`, it selects local PostgreSQL. Without either, it uses SQLite for lightweight development; the cloud integration suite uses PostgreSQL.
+
+Then use three terminals:
+
+```bash
+# Terminal 1 — backend, from the repository root
+source backend/.venv/bin/activate
+python backend/manage.py runserver
+```
+
+```bash
+# Terminal 2 — frontend
+cd frontend
+npm run dev
+```
+
+```bash
+# Terminal 3 — audio worker
+cd backend
+source .venv/bin/activate
+celery -A config worker --loglevel=info --concurrency=1
+```
+
+Keep the worker running for automatic transcription. Vite proxies API requests to Django. Create a staff account interactively:
+
+```bash
+backend/.venv/bin/python backend/manage.py createsuperuser
+```
+
+Users register through React. Staff can assign teacher/admin roles in Django Admin. Teacher writes are limited to their own materials; staff/admin can manage all materials. Registration cannot elevate a student's role.
+
+## Audio processing
+
+`base.en` is the default local CPU/int8 model; `tiny.en` is available for lighter machines. Both use reviewed pinned model revisions, and downloaded LFS weights are checked against their content hash. The model cache is ignored under `backend/.cache/whisper`. Set `WHISPER_MODEL`, `WHISPER_THREADS`, optional `WHISPER_MODEL_REVISION` or `WHISPER_CACHE_DIR` in `.env`. Use `WHISPER_LOCAL_ONLY=true` on pre-provisioned/offline machines.
+
+Jobs persist their queued/running/succeeded/failed state, stage, errors and result version. Repeated submissions are deduplicated; failed jobs can retry. Stale jobs cannot replace a newer recording/request. Published transcript versions and historical student sessions are preserved. Existing practice sessions retain their legacy grouping; new sessions use the revised difficulty rules.
+
+Optional reference text uses recognized-word anchors. Unmatched words keep unknown timestamps and are flagged for review; the site never distributes fake proportional timestamps. This is **not a phoneme-level forced aligner**. Speech errors and low confidence require human review; full phoneme alignment and a waveform editor remain future enhancements.
+
+The supported Hub HTTPS downloader is used behind proxies with TLS verification intact. Required download hosts include `huggingface.co` and its actual model CDN `us.aws.cdn.hf.co`; cloud settings also retain the Hub/Xet download domains. `av==15.1.0` is pinned because newer PyAV removed an API used by the installed speech provider.
+
+## Exam questions and PDFs
+
+Author multiple choice (including multiple selections), matching, form/note/table/sentence completion, short answers, maps and diagrams. The form accepts options and answer variants without JSON. PDFs up to 15 MB / 50 pages are private. Select only question pages: answer keys printed on selected pages would be visible to students. Scanned pages can be rendered as images; selectable text is extracted for the teacher only. No automatic OCR or arbitrary PDF-to-correct-question/answer parsing is claimed.
+
+Question sets are versioned. Attempts pin both the transcript/audio version and the published question set. Timed deadlines are server-enforced; untimed attempts have no deadline and never expire because of elapsed time. Draft answers autosave and resume. Submission scores accepted answer variants and makes the attempt read-only.
+
+The exam UI starts audio once. A single-use server ticket delivers it, and study/transcript/hint endpoints for that student's active material are blocked until submission. Once bytes reach a browser, a determined client can record or retain them; this is not DRM or a secure proctoring system. Leaving/reloading stops playback and does not grant a second start. Large recordings currently download into an authenticated blob before playback.
+
+## Validation
+
+```bash
+backend/.venv/bin/python backend/manage.py check
+RUN_SPEECH_TESTS=1 backend/.venv/bin/pytest backend/tests -q
+backend/.venv/bin/python backend/manage.py spectacular --file /tmp/schema.yaml --validate --fail-on-warn
+npm --prefix frontend test -- --run
+npm --prefix frontend run build
+# Both servers and the real worker must be running:
+npm --prefix frontend run test:e2e
+```
+
+Prepare the model before the real-ASR tests. Without `RUN_SPEECH_TESTS=1`, the explicit real-model test is skipped; it is not a readiness claim. Test audio/text and PDFs are original fixtures. Browser fixtures clean up disposable accounts, materials and files. Screenshots/traces are ignored under `frontend/test-results`. See `docs/STATUS.md` for the actual outcomes, remaining limitations and next tasks.
+
+## Standalone interface demo
+
+The earlier standalone prototype remains under `demo/` for design review:
 
 ```bash
 open demo/index.html
 ```
 
-No npm, Django or Docker setup is needed for this demo. It includes original audio, admin/student views, Mock → automatic Practice generation, and future Reading/Writing/Speaking placeholders. This is a local interface prototype: custom audio timing is approximate and no AI transcription or real authentication runs. Full instructions: [demo/README.txt](demo/README.txt).
+It needs no npm/Django. Its custom-audio timing is approximate and it has no real authentication or AI. The **real application is `frontend/` + `backend/`**, with the workflow above.
 
+## Deployment
 
-A listening-first IELTS learning platform: Django REST Framework, React/TypeScript and PostgreSQL. The interface follows the supplied dashboard reference: navy header, light sidebar, teal actions, restrained cards and responsive workspaces. All branding is PracticeIELTS.
+Use environment-managed secrets and private storage. Local media is ignored under `backend/media`; optional S3-compatible storage is configured through `.env.example` and has not been tested against an external bucket. Never expose storage credentials to React. Docker builds mount the host CA bundle as a BuildKit secret; TLS and artifact verification remain enabled. No deployment/publication is implied by pushing code.
 
-## Current increment
-
-Working accounts/JWT refresh, server-side student/teacher/admin permissions, dynamic nested collections, draft materials, validated private audio, manual timestamped transcript versions, publication gates, deterministic word comparison, difficulty-based dictation, autosave/resume, response-derived dashboard/activity and basic transcript playback/mistake history.
-
-New accounts have honest empty states. No IELTS books, copyrighted recordings, fabricated user statistics or shared default accounts are seeded. Automatic transcription/alignment, waveform editing, vocabulary notes, resolved-mistake tracking and mock exams remain roadmap tasks. See TASKS.md and docs/STATUS.md for verification and limitations.
-
-## Prerequisites
-
-Python 3.12+, Node 24, npm, Docker Compose and FFmpeg/ffprobe. Debian/Ubuntu Chromium (`/usr/bin/chromium`) is used by the browser test; set CHROMIUM_PATH for another installed Chromium. Normal app use does not require Chromium.
-
-```bash
-bash infrastructure/setup.sh
-```
-
-The script creates a Python environment, installs pinned dependencies with npm ci, creates ignored local random development secrets only if .env does not exist, starts PostgreSQL/Redis, runs migrations and builds the frontend. Existing .env is preserved. If maintaining .env yourself, use .env.example and supply local secrets; never commit them. infrastructure/run.py loads .env without printing its values and selects PostgreSQL when POSTGRES_PASSWORD is set. DATABASE_URL takes precedence. SQLite is an explicit lightweight alternative when no database URL/password is configured (or USE_SQLITE=1 without DATABASE_URL).
-
-In separate terminals, from the repository root:
-
-```bash
-python infrastructure/run.py backend/.venv/bin/python backend/manage.py runserver 0.0.0.0:8000
-npm --prefix frontend run dev -- --port 5173
-python infrastructure/run.py backend/.venv/bin/celery --workdir backend -A config worker --loglevel=info --concurrency=2
-```
-
-Vite proxies /api to Django. Use the React frontend for account registration. Create the first administrator interactively, with no built-in password:
-
-```bash
-python infrastructure/run.py backend/.venv/bin/python backend/manage.py createsuperuser
-```
-
-Superusers have content permissions through is_staff. Administrators can assign teacher/admin roles through Django Admin. A teacher may modify their own materials; staff/admin may manage all materials. Students cannot elevate roles through registration or API calls. The content studio supports collection create/edit/move/reorder/safe delete and material drafts → audio → manual transcript → review/publish.
-
-## Checks
-
-```bash
-python infrastructure/run.py backend/.venv/bin/python backend/manage.py check
-python infrastructure/run.py backend/.venv/bin/pytest backend/tests -q
-python infrastructure/run.py backend/.venv/bin/python backend/manage.py spectacular --file /tmp/practiceielts-openapi.yaml --validate --fail-on-warn
-npm --prefix frontend test -- --run
-npm --prefix frontend run build
-# With both servers running:
-npm --prefix frontend run test:e2e
-```
-
-The browser test creates unique disposable teacher/student accounts and an original synthetic speech recording with FFmpeg flite; it never uses copyrighted audio. Test-generated data is labeled with a unique suffix and removed by the test cleanup hook. Browser screenshots/traces are ignored under frontend/test-results. Tests against a shared live database should be avoided; use an isolated development database. Pytest creates and destroys its own database.
-
-## Configuration and security
-
-JWT access tokens stay in memory; refresh cookies are HttpOnly, rotating and revocable. Cookie auth endpoints require CSRF. Production requires DEBUG=false, an explicit secret, TLS, secure hosts/origins and shared throttle/cache settings (see docs/DEPLOYMENT.md). Original audio remains private, with authenticated Range-capable streaming and validated duration. Browser audio currently fetches an authenticated blob before playback, so large files wait for download; streaming signed URLs are a later optimization.
-
-Default development media is an ignored private backend/media directory. S3_BUCKET/S3_ENDPOINT_URL and AWS credentials enable django-storages S3, preserving signed/private object access. S3 integration needs credentials and has not been validated against an external bucket.
-
-OpenAPI: /api/v1/schema/ and /api/v1/docs/ on the backend. Shared API contracts and architecture live at the repository root. Read AGENTS.md to continue the roadmap.
-
-Docker builds mount the host CA bundle as a BuildKit secret to preserve TLS verification behind the cloud HTTPS proxy. BUILD_CA_BUNDLE can select a trusted PEM bundle on other hosts. No trust verification is disabled and no certificate is baked into the image.
+Production hardening and operational requirements are in `docs/DEPLOYMENT.md`. API contracts, architecture, tasks and contributor instructions live at the repository root.

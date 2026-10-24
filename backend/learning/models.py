@@ -38,6 +38,13 @@ class Material(models.Model):
         on_delete=models.PROTECT,
         related_name="+",
     )
+    published_questions = models.ForeignKey(
+        "exams.QuestionSet",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -63,6 +70,10 @@ class TranscriptVersion(models.Model):
     audio = models.ForeignKey(AudioAsset, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
     published_at = models.DateTimeField(null=True, blank=True)
+    origin = models.CharField(max_length=16, default="manual")
+    reference_text = models.TextField(blank=True)
+    provider = models.CharField(max_length=150, blank=True)
+    warnings = models.JSONField(default=list)
 
     class Meta:
         ordering = ["-id"]
@@ -77,6 +88,9 @@ class Segment(models.Model):
     speaker = models.CharField(max_length=100, blank=True)
     start_ms = models.PositiveIntegerField()
     end_ms = models.PositiveIntegerField()
+    words = models.JSONField(default=list)
+    confidence = models.FloatField(null=True, blank=True)
+    needs_review = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["position"]
@@ -99,6 +113,7 @@ class PracticeSession(models.Model):
         max_length=8, choices=[(x, x) for x in ["easy", "medium", "hard", "full"]]
     )
     position = models.PositiveIntegerField(default=0)
+    grouping_version = models.PositiveSmallIntegerField(default=1)
     drafts = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -106,7 +121,13 @@ class PracticeSession(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "material", "version", "difficulty"],
+                fields=[
+                    "user",
+                    "material",
+                    "version",
+                    "difficulty",
+                    "grouping_version",
+                ],
                 name="unique_practice_session",
             )
         ]

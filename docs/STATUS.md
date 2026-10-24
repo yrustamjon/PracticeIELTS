@@ -1,39 +1,32 @@
-# Implementation status — 2026-10-24
+# PracticeIELTS — current handoff
 
-## Completed increment
-M1 foundation and M2 manual-content/core dictation tasks have been implemented and verified. The complete product roadmap is not finished. The supplied dashboard reference informs the shared navy/teal visual shell, sidebar, search, cards, responsive dashboard, material library, dictation and admin studio. New users see zero/empty data, never fictional statistics.
+## Latest real-application increment
+Implemented in backend/ and frontend/ (not only demo/): audio-only uploads queue durable Celery jobs; a real local faster-whisper CPU model produces transcript/word timestamps; optional TXT/PDF reference text uses reviewed recognized-word anchors. Generated versions require teacher review before publication. Easy displays word count and uses anchored chunks; Medium is one sentence without count; Hard plays up to three sentences. Legacy session grouping is preserved through a versioned migration.
 
-Implemented: accounts with JWT and CSRF-protected rotating HttpOnly refresh cookies; server roles; teacher material ownership; arbitrary-depth collection create/edit/move/reorder/safe delete; licensing metadata; draft visibility; validated private original audio; Range delivery; immutable transcript versions; manual segmentation/review/publish; difficulty intervals; original-answer preservation; word alignment and normalization; accessible comparison statuses; queued autosave and route-exit flush; resume and refresh restoration. Basic transcript study, checked mistake history and response-derived analytics are useful early portions of M4, not completion of all M4 acceptance criteria.
+The same material now has normalized, versioned exam question sets: multiple choice/multi-select, matching, form/note/table/sentence completion, short answer, maps and diagrams. Private question PDFs are extracted for editors and rendered to PNG; only explicitly approved pages reach students. PDF quick setup uses teacher-provided answer keys; it does not invent questions or answers. Both timed and untimed mocks save/resume answers, enforce deadlines only for timed attempts, score deterministically, and expose keys after submission. Single-use audio tickets and active-exam study-route guards are implemented. Reading/Writing/Speaking are future placeholders for both roles.
 
-## Validation evidence
-- 19 backend pytest tests passed against actual PostgreSQL 16. The earlier 17-test baseline also passed against SQLite; final new regressions were verified on PostgreSQL.
-- Django system checks and migration drift check passed.
-- OpenAPI validation with --fail-on-warn passed without warnings.
-- 3 Vitest tests passed (including concurrent refresh regression).
-- React/TypeScript production build passed.
-- Playwright: 1 full browser integration test passed. An authorized teacher creates a collection/material, uploads original synthetic speech, saves two timed segments and publishes. A separate student account browses the library, plays actual audio with segment stopping, checks an intentionally incorrect answer (75%), moves to segment two, autosaves, leaves, resumes and refreshes, checks a correct answer (100%), and sees derived accuracy (88%). Mobile navigation and no-horizontal-overflow assertions passed.
-- Docker PostgreSQL and Redis are healthy. Redis ping and Celery inspect ping returned success.
-- Backend Docker image built with TLS verification preserved using host CA build secret. Initial container build failed because the cloud proxy CA was absent; supported CA-bundle injection fixed it, without trusted-host flags or verification bypass.
-- infrastructure/setup.sh was run successfully after dependencies already existed: npm ci, migrations, checks and build are repeatable.
-- Browser screenshots were visually inspected. Screenshots and traces are ignored test artifacts under frontend/test-results. Disposable test accounts/content were cleaned up; no production accounts or materials were seeded.
+The content studio now uploads audio + optional transcript, shows real job stages/errors, accepts typed questions or PDF, reviews generated segments, and publishes Mock + Practice together. No per-sentence timestamps are required in the normal workflow. Advanced manual recovery remains available. Root .env is loaded consistently by plain Django/Celery commands. Setup is portable to Mac cache/CA paths; Node 24.15+ and PyAV 15.1.0 compatibility are pinned.
 
-## Saved cloud configuration
-install_script runs infrastructure/setup.sh. start_skill records service startup, working directory, required readiness checks and existing-checkout guidance. The draft save is confirmed; the user must review/save it in environment settings and publish the prepared environment. No publication or deployment is claimed, nor restoration in a fresh task.
+## Verification already completed
+- 49 non-model PostgreSQL backend tests passed, covering pipeline contracts, roles, reference gaps, idempotency, PDF extraction/rendering/page privacy, all question types, timed expiry, untimed persistence, media ownership/single-use tickets, hidden keys, legacy grouping and safety bounds.
+- A separate real base.en integration test passed: original synthesized speech → actual ASR → timestamped segments → Easy/Medium/Hard; optional authoritative reference retained; teacher review/publication → student Practice API. No fake provider in this test.
+- Actual original 49-second MP3 transcription ran with both tiny.en and base.en. Model artifact hashes were verified; base.en is the default, pinned to 3d3d5dee26484f91867d81cb899cfcf72b96be6c. The sample comparison was 93% normalized word accuracy; this is a single fixture, not a general accuracy guarantee. Teacher review is still required.
+- Strict OpenAPI validation, Django checks, migration drift check and Ruff passed during implementation. Frontend typecheck/production build and 3 Vitest tests passed.
+- One browser test passed for the real upload outcome, an explicitly authored manual transcript fixture, private PDF/MC question authoring, publication, Practice answer check/resume/refresh, untimed mock/no timer, exam audio and scoring, timed expiry, and mobile layout. This first run recorded the model-download error correctly; it did not claim that failed ASR succeeded.
+- Model network access was diagnosed and restored via the configuration draft (including the actual CDN us.aws.cdn.hf.co); supported HTTP downloading keeps TLS enabled. Real decoding exposed incompatible PyAV 19; pinning 15.1.0 fixed it. Public model access needs no HF token.
 
-## Limitations / pending work
-- Next task: M3-01 asynchronous audio processing interfaces, persistent job states, idempotency and real worker integration. The Celery worker is configured and reachable, but has no transcription tasks yet.
-- M3 transcription/alignment providers and waveform split/merge/undo/redo editor are pending. Manual text/timing is the supported current method.
-- M4 vocabulary notes, saved difficult sentences, resolved-mistake workflow, duration accounting and broader learning history remain pending.
-- M5 mock question types, timed exam restrictions and scoring are pending; UI explicitly labels availability and offers current dictation practice.
-- M6 Telegram and extra providers remain optional and pending. Reading/Writing/Speaking remain future modules.
-- S3 configuration is available but not tested against an external bucket. Development uses private local storage. Browser playback initially downloads an authenticated blob; large-file progressive playback remains an optimization.
-- Collections currently have text metadata; image uploads/tags and advanced assignment/audit management UI are pending enhancements. Desktop sidebar is fixed; mobile navigation collapses into a drawer.
-- Production deployment hardening and cross-browser/accessibility audits remain outstanding (docs/DEPLOYMENT.md). No external credentials are required for the currently verified workflow.
+## Immediate final checks still to finish at this checkpoint
+1. Restart backend and worker so the latest .env loader/model configuration is active.
+2. Run RUN_SPEECH_TESTS=1 backend/.venv/bin/pytest backend/tests -q as one final suite, strict schema/migration checks, frontend build/Vitest.
+3. Run the updated two-test Playwright suite. The second test strictly requires audio-only upload → successful real worker transcript → review/publish → student Easy/Medium/Hard, without a manual transcript fixture. Do not mark this flow verified before it passes.
+4. Exercise the updated reusable setup/start instructions and save the cloud configuration draft. Record final results and push a verification follow-up if needed.
+
+## Remaining product limitations
+- Reference alignment is recognized-word anchoring with explicit unknown timestamps and review flags, not a full phoneme forced aligner. Waveform split/merge/undo/redo remains future work.
+- PDFs can display scanned pages but no automatic OCR or reliable arbitrary exam/answer-key inference is claimed; teacher authoring and page selection are required.
+- Single-use media delivery is not DRM; received bytes can be retained by a determined client. Exam audio currently loads an authenticated blob; leaving/reloading does not grant a new start.
+- S3 configuration exists but no external bucket smoke test was run. Vocabulary notes, saved/resolved mistake workflow, richer analytics, Telegram, production hardening and broad accessibility/browser audits remain pending.
+- No copyrighted IELTS assets, outside-site scraping, default passwords, deployment, or environment publication were performed. Source demo/ remains a separate local interface prototype.
 
 ## Continuation
-Read AGENTS.md and TASKS.md. Start M3-01, mark it In Progress and verify before marking Completed. Do not replace the manual workflow with simulated AI output. Preserve transcript versions and student response history. Push coherent verified increments directly to main as authorized, without force pushes or deployment.
-
-## Standalone demo follow-up
-The user clarified that a mock should automatically produce easy (chunk/sentence with word count), medium (one full sentence, no word count), and hard (continuous multiple sentences, no word count) practice. Reading/Writing/Speaking are future modules in both admin and student views. A standalone interface demo is now in demo/ at the user's request; open demo/index.html. This previews the revised workflow and does not claim those changes are integrated into the Django/React application. Original sample timings are accurate; custom uploaded audio uses explicitly labeled approximate timing, not AI alignment.
-
-The source demo passed browser checks over local HTTP for role-specific UI, upload/publication/automatic grouping, three difficulty levels, real segment playback, comparison, autosave/resume/refresh, restricted mock playback and 8/8 scoring, transcript study, mobile layout, future-module placeholders and IndexedDB audio persistence. The project copy preserves those JavaScript/CSS/audio files exactly.
+Read AGENTS.md, TASKS.md and this file. Finish the four final checks above, preserve historical versions, update task evidence, and push verified increments to main as authorized. Cloud settings saved in a draft are not proof of publication or restoration in a fresh task.

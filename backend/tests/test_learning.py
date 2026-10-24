@@ -302,7 +302,7 @@ def test_full_practice_resume_and_version_pinning(client, users, material):
 
 
 @pytest.mark.parametrize(
-    "difficulty,count", [("easy", 2), ("medium", 1), ("hard", 1), ("full", 1)]
+    "difficulty,count", [("easy", 2), ("medium", 2), ("hard", 1), ("full", 1)]
 )
 def test_difficulty_groups(client, users, material, difficulty, count):
     m = publish(client, material)
@@ -313,7 +313,7 @@ def test_difficulty_groups(client, users, material, difficulty, count):
         format="json",
     ).data
     assert len(session["groups"]) == count
-    if difficulty != "easy":
+    if difficulty not in ("easy", "medium"):
         assert session["groups"][0]["end_ms"] == 4000
 
 
@@ -373,3 +373,8 @@ def test_published_material_does_not_leak_another_teachers_draft(
 def test_whitespace_normalization():
     assert compare("one  two", "one two")["accuracy"] == 100
     assert compare("one  two", "one two", {"whitespace": False})["accuracy"] < 100
+
+
+def test_long_full_answer_is_bounded_before_allocating_alignment_matrix():
+    with pytest.raises(ValueError, match="too long"):
+        compare("word " * 1500, "word " * 1500)

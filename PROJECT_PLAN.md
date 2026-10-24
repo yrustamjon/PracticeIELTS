@@ -22,3 +22,8 @@ See ARCHITECTURE.md and API_CONTRACT.md. Every task in TASKS.md defines dependen
 
 ## Validation
 Backend permission, hierarchy cycle, publication, answer normalization, ownership, version stability and resume tests. Frontend build/type checking, component tests, and browser integration. Critical E2E: staff creates category/material → uploads real audio → authors segments → publishes → student practises → checks answer → navigates away → resumes. Use original synthesized/test audio only.
+
+## Revised real-app execution
+The user approved moving the prototype workflow into Django/React: a teacher uploads a mock audio once, optionally supplies a reference transcript, and uploads typed questions or a PDF. Audio must produce real word timestamps and automatic dictation (easy chunk + word count; medium single sentence without count; hard consecutive 2–3 sentences without count). The same material serves timed or untimed question-based Mock. No separate practice authoring is required. Review/publish remains mandatory. Reading/Writing/Speaking stay future-only for both roles. Execute REAL-01 → REAL-02 → REAL-03; save verified increments to main.
+
+Default transcription is local faster-whisper on CPU (int8, bounded threads), avoiding paid API requirements. The public model download requires Hugging Face access; existing environment has no transcription credentials or model cache. Reference text is preserved and aligned to recognized word anchors; low-confidence or unaligned text must be flagged, never replaced with proportional fake timestamps. PDF text extraction is not a promise of automatic reliable exam/answer parsing; teacher review and question controls remain necessary.

@@ -5,6 +5,11 @@ from pathlib import Path
 import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+from urllib.parse import quote
+
+from dotenv import load_dotenv
+
+load_dotenv(BASE_DIR.parent / ".env", override=False)
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
@@ -32,6 +37,8 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "accounts",
     "learning",
+    "processing",
+    "exams",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -58,9 +65,16 @@ TEMPLATES = [
     }
 ]
 WSGI_APPLICATION = "config.wsgi.application"
+database_url = os.getenv("DATABASE_URL")
+if not database_url and os.getenv("POSTGRES_PASSWORD") and not os.getenv("USE_SQLITE"):
+    database_url = (
+        "postgresql://practiceielts:"
+        + quote(os.environ["POSTGRES_PASSWORD"], safe="")
+        + "@127.0.0.1:5432/practiceielts"
+    )
 DATABASES = {
-    "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}", conn_max_age=60
+    "default": dj_database_url.parse(
+        database_url or f"sqlite:///{BASE_DIR / 'db.sqlite3'}", conn_max_age=60
     )
 }
 AUTH_USER_MODEL = "accounts.User"
@@ -139,3 +153,27 @@ if os.getenv("S3_BUCKET"):
             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
         },
     }
+
+# Local CPU speech recognition; first use downloads a public model unless local-only is enabled.
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base.en")
+WHISPER_CACHE_DIR = Path(
+    os.getenv("WHISPER_CACHE_DIR", str(BASE_DIR / ".cache" / "whisper"))
+)
+WHISPER_THREADS = max(1, min(int(os.getenv("WHISPER_THREADS", "4")), 8))
+WHISPER_LOCAL_ONLY = os.getenv("WHISPER_LOCAL_ONLY", "false").lower() == "true"
+CELERY_TASK_PUBLISH_RETRY = False
+CELERY_BROKER_CONNECTION_TIMEOUT = 3
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_TRACK_STARTED = True
+
+# Keep model caches in the checkout's ignored writable cache, including HF/Xet metadata.
+os.environ.setdefault("HF_HOME", str(WHISPER_CACHE_DIR / "hub-home"))
+os.environ.setdefault("HF_XET_CACHE", str(WHISPER_CACHE_DIR / "xet"))
+
+# Use the Hub's supported HTTPS downloader in proxied environments; keep TLS verification enabled.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
+WHISPER_MODEL_REVISION = os.getenv("WHISPER_MODEL_REVISION") or {
+    "tiny.en": "0d3d19a32d3338f10357c0889762bd8d64bbdeba",
+    "base.en": "3d3d5dee26484f91867d81cb899cfcf72b96be6c",
+}.get(WHISPER_MODEL)

@@ -20,6 +20,8 @@ export type Segment = {
   start_ms: number;
   end_ms: number;
   position?: number;
+  confidence?: number | null;
+  needs_review?: boolean;
 };
 export type Audio = {
   id: number;
@@ -27,6 +29,17 @@ export type Audio = {
   mime_type: string;
   size: number;
   stream_url: string;
+};
+export type ProcessingJob = {
+  id: number;
+  audio: number;
+  state: "queued" | "running" | "succeeded" | "failed";
+  stage: string;
+  attempts: number;
+  error_code: string;
+  error_message: string;
+  warnings: string[];
+  result_version: number | null;
 };
 export type Material = {
   id: number;
@@ -38,9 +51,15 @@ export type Material = {
   license: string;
   rights_confirmed: boolean;
   status: string;
+  mock_available?: boolean;
+  question_count?: number;
+  transcript_audio_id?: number | null;
   audio: Audio | null;
   segments: Segment[];
   version_id: number | null;
+  processing?: ProcessingJob | null;
+  transcript_origin?: string;
+  transcript_warnings?: string[];
 };
 export type Session = {
   id: number;
@@ -50,7 +69,12 @@ export type Session = {
   difficulty: string;
   position: number;
   drafts: Record<string, string>;
-  groups: { start_ms: number; end_ms: number; speaker: string }[];
+  groups: {
+    start_ms: number;
+    end_ms: number;
+    speaker: string;
+    word_count?: number;
+  }[];
   audio: Audio;
   checked_positions: number[];
 };
@@ -148,3 +172,90 @@ export async function api<T>(
 }
 export const post = <T>(path: string, data: unknown = {}) =>
   api<T>(path, { method: "POST", body: JSON.stringify(data) });
+
+export async function apiBlob(
+  path: string,
+  options: RequestInit = {},
+  retry = true,
+): Promise<Blob> {
+  const headers = new Headers(options.headers);
+  const token = useAuth.getState().token;
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const r = await fetch(`/api/v1/${path}`, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
+  if (r.status === 401 && retry) {
+    await restore();
+    if (useAuth.getState().token) return apiBlob(path, options, false);
+  }
+  if (!r.ok) {
+    let message = "Unable to load this private file.";
+    try {
+      const data = await r.json();
+      message = data.detail || Object.values(data).flat().join(" ");
+    } catch {}
+    throw new Error(message);
+  }
+  return r.blob();
+}
+export type QuestionType =
+  | "multiple_choice"
+  | "matching"
+  | "form_completion"
+  | "note_completion"
+  | "table_completion"
+  | "sentence_completion"
+  | "short_answer"
+  | "map_label"
+  | "diagram_label";
+export type ExamQuestion = {
+  number: number;
+  part: number;
+  type: QuestionType;
+  prompt: string;
+  instructions: string;
+  options: { key: string; text: string }[];
+  answers?: (string | string[])[];
+  max_words: number;
+  context: Record<string, unknown>;
+  selections?: number;
+};
+export type QuestionSet = {
+  id: number;
+  audio: number;
+  document: number | null;
+  document_pages: number[];
+  duration_seconds: number;
+  published_at: string | null;
+  questions: ExamQuestion[];
+};
+export type QuestionDocument = {
+  id: number;
+  page_count: number;
+  extraction_state: string;
+  extracted_text: string;
+};
+export type MockAttempt = {
+  id: number;
+  material: number;
+  title: string;
+  timing: "timed" | "untimed";
+  started_at: string;
+  deadline: string | null;
+  server_now: string;
+  submitted_at: string | null;
+  answers: Record<string, string | string[]>;
+  audio_started: boolean;
+  questions: ExamQuestion[];
+  document_pages: number[];
+  score: number | null;
+  total: number;
+  results?: {
+    number: number;
+    correct: boolean;
+    answer: string | string[];
+    accepted_answers: (string | string[])[];
+  }[];
+};

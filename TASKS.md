@@ -117,18 +117,22 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Milestone: M3
 - Dependencies: M2-02
 - Priority: High
-- Status: Pending
+- Status: Completed
 - Subtasks / acceptance criteria: Separate audio/transcription/alignment/segmentation interfaces; Celery jobs, retries/idempotency/status.
 - Verification: Worker integration tests with real Redis; provider failure tests.
 
-## M3 / M3-E2 / M3-02 — Transcription and forced alignment providers
+- Evidence: PostgreSQL backend suite (49 tests including safety/legacy checks), strict OpenAPI validation, and the real-app browser PDF/Practice/timed/untimed flow. See docs/STATUS.md for ASR limitations and final verification.
+
+## M3 / M3-E2 / M3-02 — Local transcription and reviewed reference alignment
 - Description: Audio-only and authoritative text workflows; measurable status/errors and editable output.
 - Milestone: M3
 - Dependencies: M3-01
 - Priority: High
-- Status: Pending
+- Status: Completed
 - Subtasks / acceptance criteria: Audio-only and authoritative text workflows; measurable status/errors and editable output.
 - Verification: Provider contract tests and licensed real-audio integration; external credentials if necessary.
+
+- Evidence: Real local base.en audio-only/reference integration passed after model CDN access and PyAV compatibility were corrected. Word-anchor alignment is implemented; phoneme forced alignment is tracked separately below.
 
 ## M3 / M3-E3 / M3-03 — Visual transcript editor
 - Description: Waveform/timeline, split/merge, timestamp drag, undo/redo, autosave, preview and approval.
@@ -171,27 +175,33 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Milestone: M5
 - Dependencies: M1-04
 - Priority: High
-- Status: Pending
+- Status: Completed
 - Subtasks / acceptance criteria: Multiple choice, matching, all completion types, short answers, maps/diagrams and answer keys.
 - Verification: Validation and authoring tests for every type.
+
+- Evidence: PostgreSQL backend suite (49 tests including safety/legacy checks), strict OpenAPI validation, and the real-app browser PDF/Practice/timed/untimed flow. See docs/STATUS.md for ASR limitations and final verification.
 
 ## M5 / M5-E2 / M5-02 — Timed exam attempts
 - Description: Server deadline and playback access; no hints or transcript before submission; autosave.
 - Milestone: M5
 - Dependencies: M5-01
 - Priority: High
-- Status: Pending
+- Status: Completed
 - Subtasks / acceptance criteria: Server deadline and playback access; no hints or transcript before submission; autosave.
 - Verification: Security tests for replay, deadlines, answer-key leaks and repeated submissions.
+
+- Evidence: PostgreSQL backend suite (49 tests including safety/legacy checks), strict OpenAPI validation, and the real-app browser PDF/Practice/timed/untimed flow. See docs/STATUS.md for ASR limitations and final verification.
 
 ## M5 / M5-E3 / M5-03 — Scoring and results
 - Description: Deterministic scoring, result review and score history.
 - Milestone: M5
 - Dependencies: M5-02
 - Priority: High
-- Status: Pending
+- Status: Completed
 - Subtasks / acceptance criteria: Deterministic scoring, result review and score history.
 - Verification: Scoring fixtures and end-to-end timed test.
+
+- Evidence: PostgreSQL backend suite (49 tests including safety/legacy checks), strict OpenAPI validation, and the real-app browser PDF/Practice/timed/untimed flow. See docs/STATUS.md for ASR limitations and final verification.
 
 ## M6 / M6-E1 / M6-01 — Optional Telegram import
 - Description: Authorized teacher bot import copies to primary private storage; no token/URL leaks.
@@ -219,3 +229,43 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Status: Completed
 - Subtasks / acceptance criteria: Include original audio and all assets, document opening demo/index.html, preserve clear demo limitations and keep the main application behavior unchanged.
 - Verification: Copy integrity, JavaScript syntax check and complete asset references; original demo browser validation covers admin publication, three difficulties, audio, resume, mock scoring and mobile layout.
+
+## Real workflow / R1 / REAL-01 — Upload once, auto-create dictation
+- Description: Real application audio upload queues local Whisper transcription; optional reference transcript; word timings create easy chunks, medium single sentences and hard 2–3 sentences. Staff review/publish retains original audio and versioned results.
+- Milestone: M3 / revised workflow
+- Dependencies: M3-01,M3-02
+- Priority: Critical
+- Status: In Progress
+- Subtasks / acceptance criteria: Async persisted jobs/status/retry; audio-only and reference modes; correct word-count visibility; simple connected admin upload/review UI. No fabricated timestamps or transcript.
+- Verification: Worker integration with original speech, reference/word segmentation tests, API permissions and browser upload→publish→practice.
+
+## Real workflow / R2 / REAL-02 — Questions and PDF intake
+- Description: Teacher-friendly real-exam question forms, private PDF upload and rendering, extract selectable PDF text for review. Scans or ambiguous PDFs must not fabricate question/answer extraction.
+- Milestone: M5 / revised workflow
+- Dependencies: M3-01 (question/PDF work is independently verifiable while model download is blocked)
+- Priority: High
+- Status: Completed
+- Subtasks / acceptance criteria: Question types/validation, explicit answer keys, PDF preview and extracted text, ownership and private media checks.
+- Verification: PDF text/scan/invalid upload tests; question type permission and authoring tests.
+
+- Evidence: PostgreSQL backend suite (49 tests including safety/legacy checks), strict OpenAPI validation, and the real-app browser PDF/Practice/timed/untimed flow. See docs/STATUS.md for ASR limitations and final verification.
+
+## Real workflow / R3 / REAL-03 — Timed and untimed real mock
+- Description: Same published material provides question-based Mock plus generated Practice; timed/untimed attempts, persistent answers, scoring and results.
+- Milestone: M5 / revised workflow
+- Dependencies: REAL-02
+- Priority: High
+- Status: Completed
+- Subtasks / acceptance criteria: Server deadlines in timed mode only; version pinning and answer keys hidden before submission; exam media restrictions; PDF presentation and question controls; no full-exam claim for demo content.
+- Verification: Deadline/untimed/resume/scoring/permission tests and browser exam flow.
+
+- Evidence: PostgreSQL backend suite (49 tests including safety/legacy checks), strict OpenAPI validation, and the real-app browser PDF/Practice/timed/untimed flow. See docs/STATUS.md for ASR limitations and final verification.
+
+## M3 / M3-E2 / M3-04 — Phoneme forced alignment provider
+- Description: Add a true audio/reference phoneme aligner alongside the current recognized-word anchor alignment.
+- Milestone: M3
+- Dependencies: M3-02
+- Priority: High
+- Status: Pending
+- Subtasks / acceptance criteria: Preserve authoritative text; return word timestamps and confidence; expose unalignable regions; replaceable provider; no fabricated proportional timing.
+- Verification: Real audio/reference alignment fixtures including ASR mismatches and names, plus provider contract tests.

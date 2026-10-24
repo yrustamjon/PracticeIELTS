@@ -11,6 +11,7 @@ from accounts.views import (
     RefreshView,
     RegisterView,
 )
+from exams.views import AttemptDocumentPage, MockAttemptViewSet, TeacherDocumentPage
 from learning.views import (
     AudioStream,
     CategoryViewSet,
@@ -24,7 +25,16 @@ router = DefaultRouter()
 router.register("categories", CategoryViewSet)
 router.register("materials", MaterialViewSet, basename="material")
 router.register("sessions", SessionViewSet, basename="session")
+router.register("mock-attempts", MockAttemptViewSet, basename="mock-attempt")
 urlpatterns = [
+    path(
+        "api/v1/question-documents/<int:pk>/pages/<int:page>/",
+        TeacherDocumentPage.as_view(),
+    ),
+    path(
+        "api/v1/mock-attempts/<int:pk>/document-pages/<int:page>/",
+        AttemptDocumentPage.as_view(),
+    ),
     path("django-admin/", admin.site.urls),
     path("api/v1/", include(router.urls)),
     path("api/v1/auth/csrf/", CsrfView.as_view()),

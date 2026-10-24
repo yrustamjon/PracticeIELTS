@@ -33,7 +33,16 @@ class CategorySerializer(serializers.ModelSerializer):
 class SegmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Segment
-        fields = ["id", "text", "speaker", "start_ms", "end_ms", "position"]
+        fields = [
+            "id",
+            "text",
+            "speaker",
+            "start_ms",
+            "end_ms",
+            "position",
+            "confidence",
+            "needs_review",
+        ]
 
 
 class AudioSerializer(serializers.ModelSerializer):
@@ -53,6 +62,12 @@ class MaterialSerializer(serializers.ModelSerializer):
     audio = serializers.SerializerMethodField()
     segments = serializers.SerializerMethodField()
     version_id = serializers.SerializerMethodField()
+    processing = serializers.SerializerMethodField()
+    transcript_origin = serializers.SerializerMethodField()
+    transcript_warnings = serializers.SerializerMethodField()
+    mock_available = serializers.SerializerMethodField()
+    question_count = serializers.SerializerMethodField()
+    transcript_audio_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Material
@@ -70,6 +85,12 @@ class MaterialSerializer(serializers.ModelSerializer):
             "segments",
             "version_id",
             "updated_at",
+            "processing",
+            "transcript_origin",
+            "transcript_warnings",
+            "mock_available",
+            "question_count",
+            "transcript_audio_id",
         ]
 
     def version(self, obj):
@@ -89,6 +110,12 @@ class MaterialSerializer(serializers.ModelSerializer):
     @extend_schema_field(AudioSerializer(allow_null=True))
     def get_audio(self, obj):
         version = self.version(obj)
+        user = self.context["request"].user
+        if user.can_edit and (
+            user.is_staff or user.role == "admin" or obj.owner_id == user.pk
+        ):
+            latest = obj.audio_assets.order_by("-id").first()
+            return AudioSerializer(latest).data if latest else None
         asset = (
             version.audio
             if version
@@ -110,3 +137,40 @@ class MaterialSerializer(serializers.ModelSerializer):
     def get_version_id(self, obj) -> int | None:
         version = self.version(obj)
         return version.pk if version else None
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_processing(self, obj):
+        user = self.context["request"].user
+        if user.can_edit and (
+            user.is_staff or user.role == "admin" or obj.owner_id == user.pk
+        ):
+            from processing.services import job_data
+
+            return job_data(obj.processing_jobs.first())
+        return None
+
+    def get_transcript_origin(self, obj) -> str:
+        version = self.version(obj)
+        return version.origin if version else ""
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_transcript_warnings(self, obj):
+        version = self.version(obj)
+        return version.warnings if version else []
+
+    def get_mock_available(self, obj) -> bool:
+        return bool(obj.published_questions_id)
+
+    def get_question_count(self, obj) -> int:
+        user = self.context["request"].user
+        if user.can_edit and (
+            user.is_staff or user.role == "admin" or obj.owner_id == user.pk
+        ):
+            qs = obj.question_sets.first()
+        else:
+            qs = obj.published_questions
+        return qs.questions.count() if qs else 0
+
+    def get_transcript_audio_id(self, obj) -> int | None:
+        version = self.version(obj)
+        return version.audio_id if version else None

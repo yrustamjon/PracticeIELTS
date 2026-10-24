@@ -20,6 +20,17 @@ from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from exams.models import QuestionDocument
+from exams.serializers import QuestionDocumentSerializer, QuestionSetInput
+from exams.services import (
+    active_material_ids,
+    guard_study,
+    question_set_data,
+    save_question_set,
+)
+from processing.documents import extract_pdf_text, reference_from_request
+from processing.services import job_data, queue_job
+
 from .models import (
     AudioAsset,
     AuditLog,
@@ -97,6 +108,64 @@ class MaterialViewSet(viewsets.ModelViewSet):
             )
         return q.distinct()
 
+    def retrieve(self, request, *args, **kwargs):
+        material = self.get_object()
+        guard_study(request.user, material.pk)
+        return Response(self.get_serializer(material).data)
+
+    def editor_material(self, request):
+        material = self.get_object()
+        if not request.user.can_edit or not (
+            request.user.is_staff
+            or request.user.role == "admin"
+            or material.owner_id == request.user.pk
+        ):
+            raise PermissionDenied("Only authorized editors can manage this material.")
+        return material
+
+    @extend_schema(
+        request=inline_serializer(
+            name="QuestionDocumentUpload", fields={"file": serializers.FileField()}
+        ),
+        responses=QuestionDocumentSerializer,
+    )
+    @action(detail=True, methods=["get", "post"], url_path="question-document")
+    def question_document(self, request, pk=None):
+        material = self.editor_material(request)
+        if request.method == "GET":
+            document = material.question_documents.first()
+            return Response(
+                QuestionDocumentSerializer(document).data if document else None
+            )
+        upload = request.FILES.get("file")
+        if not upload or not upload.name.lower().endswith(".pdf"):
+            raise ValidationError({"file": "Choose a PDF question paper."})
+        data = upload.read(15 * 1024 * 1024 + 1)
+        text, pages = extract_pdf_text(data)
+        upload.seek(0)
+        document = QuestionDocument.objects.create(
+            material=material,
+            file=upload,
+            extracted_text=text,
+            page_count=pages,
+            extraction_state="extracted" if text else "needs_manual",
+        )
+        AuditLog.objects.create(
+            actor=request.user, material=material, action="questions.pdf_upload"
+        )
+        return Response(QuestionDocumentSerializer(document).data, status=201)
+
+    @extend_schema(request=QuestionSetInput, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["get", "put"])
+    def questions(self, request, pk=None):
+        material = self.editor_material(request)
+        if request.method == "GET":
+            return Response(question_set_data(material.question_sets.first()))
+        serializer = QuestionSetInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        qs = save_question_set(material, serializer.validated_data, request.user)
+        return Response(question_set_data(qs), status=201)
+
     def perform_create(self, serializer):
         obj = serializer.save(owner=self.request.user)
         AuditLog.objects.create(
@@ -111,7 +180,12 @@ class MaterialViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         request=inline_serializer(
-            name="AudioUpload", fields={"file": serializers.FileField()}
+            name="AudioUpload",
+            fields={
+                "file": serializers.FileField(),
+                "reference_text": serializers.CharField(required=False),
+                "reference_file": serializers.FileField(required=False),
+            },
         ),
         responses={201: AudioSerializer},
     )
@@ -121,6 +195,7 @@ class MaterialViewSet(viewsets.ModelViewSet):
         upload = request.FILES.get("file")
         if not upload:
             raise ValidationError({"file": "Select an audio file."})
+        reference = reference_from_request(request)
         duration, mime = inspect_audio(upload)
         asset = AudioAsset.objects.create(
             material=material,
@@ -132,7 +207,50 @@ class MaterialViewSet(viewsets.ModelViewSet):
         AuditLog.objects.create(
             actor=request.user, material=material, action="audio.upload"
         )
-        return Response(AudioSerializer(asset).data, status=201)
+        job = queue_job(asset, request.user, reference)
+        return Response(
+            {**AudioSerializer(asset).data, "processing": job_data(job)}, status=201
+        )
+
+    @extend_schema(
+        request=inline_serializer(
+            name="ProcessAudio",
+            fields={
+                "reference_text": serializers.CharField(required=False),
+                "force": serializers.BooleanField(required=False),
+            },
+        ),
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=True, methods=["post"])
+    def process(self, request, pk=None):
+        material = self.get_object()
+        reference = reference_from_request(request)
+        if "reference_text" not in request.data and not request.FILES.get(
+            "reference_file"
+        ):
+            previous = material.processing_jobs.first()
+            reference = previous.reference_text if previous else ""
+        audio = material.audio_assets.order_by("-id").first()
+        if not audio:
+            raise ValidationError({"detail": "Upload audio first."})
+        force = serializers.BooleanField().run_validation(
+            request.data.get("force", False)
+        )
+        job = queue_job(audio, request.user, reference, force)
+        return Response(job_data(job), status=202)
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["get"])
+    def processing(self, request, pk=None):
+        material = self.get_object()
+        if not request.user.can_edit or not (
+            request.user.is_staff
+            or request.user.role == "admin"
+            or material.owner_id == request.user.pk
+        ):
+            raise PermissionDenied("Only authorized editors can view processing jobs.")
+        return Response(job_data(material.processing_jobs.first()))
 
     @extend_schema(
         request=inline_serializer(
@@ -150,6 +268,12 @@ class MaterialViewSet(viewsets.ModelViewSet):
         data = request.data.get("segments")
         if not isinstance(data, list) or not data or len(data) > 3000:
             raise ValidationError({"segments": "Provide 1–3000 segments."})
+        previous_version = material.versions.first()
+        old_segments = (
+            list(previous_version.segments.all())
+            if previous_version and previous_version.audio_id == audio.pk
+            else []
+        )
         clean = []
         last = 0
         for index, segment in enumerate(data):
@@ -175,6 +299,41 @@ class MaterialViewSet(viewsets.ModelViewSet):
                         "segments": f"Segment {index + 1}: require text and non-overlapping integer timestamps within {audio.duration_ms} ms."
                     }
                 )
+            timing_fields = {}
+            if index < len(old_segments) and old_segments[index].words:
+                old = old_segments[index]
+                if old.text == text and old.start_ms == start and old.end_ms == end:
+                    timing_fields = {
+                        "words": old.words,
+                        "confidence": old.confidence,
+                        "needs_review": old.needs_review,
+                    }
+                elif old.start_ms == start and old.end_ms == end:
+                    from processing.segmentation import align_reference
+                    from processing.transcription import ReferenceMismatch
+
+                    try:
+                        mapped = align_reference(text, old.words)
+                        merged_words = [
+                            w for sentence in mapped for w in sentence["words"]
+                        ]
+                        timing_fields = {
+                            "words": merged_words,
+                            "confidence": min(s["confidence"] for s in mapped),
+                            "needs_review": any(s["needs_review"] for s in mapped),
+                        }
+                    except ReferenceMismatch:
+                        timing_fields = {
+                            "words": [],
+                            "confidence": None,
+                            "needs_review": True,
+                        }
+                else:
+                    timing_fields = {
+                        "words": [],
+                        "confidence": None,
+                        "needs_review": True,
+                    }
             clean.append(
                 dict(
                     position=index,
@@ -182,11 +341,18 @@ class MaterialViewSet(viewsets.ModelViewSet):
                     speaker=speaker,
                     start_ms=start,
                     end_ms=end,
+                    **timing_fields,
                 )
             )
             last = end
         with transaction.atomic():
-            version = TranscriptVersion.objects.create(material=material, audio=audio)
+            version = TranscriptVersion.objects.create(
+                material=material,
+                audio=audio,
+                origin="edited"
+                if previous_version and previous_version.origin != "manual"
+                else "manual",
+            )
             Segment.objects.bulk_create([Segment(version=version, **s) for s in clean])
             AuditLog.objects.create(
                 actor=request.user, material=material, action="transcript.version"
@@ -212,7 +378,27 @@ class MaterialViewSet(viewsets.ModelViewSet):
                     "detail": "Audio changed: align and save a new transcript before publishing."
                 }
             )
+        if (
+            version.origin != "manual"
+            and request.data.get("confirm_review") is not True
+        ):
+            raise ValidationError(
+                {
+                    "detail": "Review the generated transcript and explicitly confirm it before publishing."
+                }
+            )
+        question_set = material.question_sets.first()
+        if question_set and question_set.audio_id != version.audio_id:
+            raise ValidationError(
+                {
+                    "detail": "The questions belong to a previous recording. Review and save them for the current audio before publishing."
+                }
+            )
         with transaction.atomic():
+            if question_set:
+                question_set.published_at = timezone.now()
+                question_set.save(update_fields=["published_at"])
+            material.published_questions = question_set
             version.published_at = timezone.now()
             version.save(update_fields=["published_at"])
             material.published_version = version
@@ -247,6 +433,7 @@ class AudioStream(APIView):
         )
         if not permitted:
             raise PermissionDenied("This audio is private.")
+        guard_study(request.user, asset.material_id)
         total = asset.size
         start = 0
         end = total - 1
@@ -300,10 +487,16 @@ def session_data(session):
         "title": session.material.title,
         "version": session.version_id,
         "difficulty": session.difficulty,
+        "grouping_version": session.grouping_version,
         "position": session.position,
         "drafts": session.drafts,
         "groups": [
-            {"start_ms": g["start_ms"], "end_ms": g["end_ms"], "speaker": g["speaker"]}
+            {
+                "start_ms": g["start_ms"],
+                "end_ms": g["end_ms"],
+                "speaker": g["speaker"],
+                **({"word_count": g["word_count"]} if "word_count" in g else {}),
+            }
             for g in intervals
         ],
         "audio": AudioSerializer(session.version.audio).data,
@@ -339,22 +532,24 @@ class SessionViewSet(viewsets.ViewSet):
     queryset = PracticeSession.objects.none()
 
     def own(self, request, pk):
-        return get_object_or_404(
+        instance = get_object_or_404(
             PracticeSession.objects.select_related(
                 "version", "material", "version__audio"
             ),
             pk=pk,
             user=request.user,
         )
+        guard_study(request.user, instance.material_id)
+        return instance
 
     def list(self, request):
         return Response(
             {
                 "results": [
                     session_data(s)
-                    for s in PracticeSession.objects.filter(user=request.user).order_by(
-                        "-updated_at"
-                    )[:50]
+                    for s in PracticeSession.objects.filter(user=request.user)
+                    .exclude(material_id__in=active_material_ids(request.user))
+                    .order_by("-updated_at")[:50]
                 ]
             }
         )
@@ -363,6 +558,7 @@ class SessionViewSet(viewsets.ViewSet):
         material = get_object_or_404(
             Material, pk=request.data.get("material"), published_version__isnull=False
         )
+        guard_study(request.user, material.pk)
         difficulty = request.data.get("difficulty", "easy")
         if difficulty not in ("easy", "medium", "hard", "full"):
             raise ValidationError({"difficulty": "Choose easy, medium, hard or full."})
@@ -371,6 +567,7 @@ class SessionViewSet(viewsets.ViewSet):
             material=material,
             version=material.published_version,
             difficulty=difficulty,
+            grouping_version=1,
         )
         return Response(session_data(session))
 
@@ -382,6 +579,7 @@ class SessionViewSet(viewsets.ViewSet):
             session = get_object_or_404(
                 PracticeSession.objects.select_for_update(), pk=pk, user=request.user
             )
+            guard_study(request.user, session.material_id)
             position = request.data.get("position", session.position)
             intervals = groups(session)
             if (
@@ -430,7 +628,10 @@ class SessionViewSet(viewsets.ViewSet):
             raise ValidationError(
                 {"normalization": "Use boolean normalization options."}
             )
-        result = compare(intervals[position]["text"], answer, options)
+        try:
+            result = compare(intervals[position]["text"], answer, options)
+        except ValueError as exc:
+            raise ValidationError({"answer": str(exc)}) from exc
         StudentResponse.objects.create(
             session=session, position=position, original_answer=answer, result=result
         )
@@ -511,8 +712,10 @@ class ProgressView(APIView):
 )
 class ResponseView(APIView):
     def get(self, request):
-        q = StudentResponse.objects.filter(session__user=request.user).select_related(
-            "session__material"
+        q = (
+            StudentResponse.objects.filter(session__user=request.user)
+            .exclude(session__material_id__in=active_material_ids(request.user))
+            .select_related("session__material")
         )
         if request.query_params.get("mistakes") == "true":
             q = q.filter(result__accuracy__lt=100)
