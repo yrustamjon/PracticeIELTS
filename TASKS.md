@@ -299,3 +299,12 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Verification: Real PDF geometry/page-isolation/privacy tests; frontend existing text-mode compatibility; original two-page/ten-blank browser fixture with full headings, notes, table, entry, resize/zoom, resume and scoring.
 
 - Evidence (2026-10-24): 57 PostgreSQL backend tests including actual local speech; 10 frontend tests; production typecheck/build; all 4 live-service Playwright workflows passed in one final run (44.5 seconds). New original PDF flow verifies 2 question pages/10 positioned blanks, preserved headings/notes/table, teacher drag correction, approved-page privacy, entry/autosave, page navigation, phone zoom, refresh and 100% scoring. Strict schema, checks, migration drift, Ruff and diff checks passed. Desktop/mobile screenshots reviewed; fixtures are original content.
+
+## Mock / UX-03 — Native HTML exam matching the uploaded reference
+- Priority: Critical
+- Status: Completed
+- Request: Match the attached standalone HTML mock: compact white header/audio, full native notes/form/table content with embedded fields, radio options and bottom part navigation.
+- Acceptance: Persist versioned formatted question sections; render real native controls inside complete text; authorized script-free HTML draft import with teacher-entered keys; preserve timed/untimed, autosave, ownership and existing PDF/text attempts; no reference scripts, advertisements or remote tracking/media copied into the app.
+- Verification: Template/import security and version tests; native controls unit tests; live native notes/radio/table author→publish→resume/score/browser/mobile flow; existing suites/build.
+
+- Evidence (2026-10-24): Uploaded reference parsed to 4 parts/40 controls without executing source scripts or importing remote media. 59 backend tests, 14 frontend tests, production build, 5 browser flows (including native notes/radios/table import and phone resume/scoring), strict OpenAPI, Django check, migration drift, Ruff and diff checks passed. Desktop/phone native screenshots reviewed; committed test papers are original fixtures.

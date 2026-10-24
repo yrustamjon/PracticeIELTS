@@ -105,6 +105,7 @@ function Shell() {
             <Headphones size={17} />
             Listening · {user.username}
           </span>
+          <div id="exam-audio-slot" />
           <Link to="/mock-tests" className="exam-exit">
             Save & exit
           </Link>

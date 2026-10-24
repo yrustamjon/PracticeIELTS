@@ -650,3 +650,97 @@ def test_pdf_inline_numbered_blanks_have_real_coordinates_and_keep_private_pages
         format="json",
     )
     assert r.status_code == 400 and "dimensions" in str(r.data)
+
+
+NATIVE_PAPER = """<html><head><script>const secretKey = "not for students";</script></head><body><div>Advertising</div>
+<div id="part1"><p>Complete the notes. ONE WORD.</p><div class="gx-notes"><p class="gx-notes-title">Library visit</p><p class="gx-sec-title">Booking details</p><ul><li>Meeting point: <input data-question="1" type="text" value="PRIVATE" onfocus="alert(1)"></li><li>Room: <input data-question="2" type="text"></li></ul></div><script>alert('hidden key')</script></div>
+<div id="part2"><h3>Choose the correct location.</h3><label><input type="radio" data-question="3" value="A">A Upstairs</label><label><input type="radio" data-question="3" value="B">B Downstairs</label><table><tr><th>Item</th><th>Place</th></tr><tr><td>Books</td><td><input data-question="4" type="text"></td></tr></table><img src="https://example.invalid/tracker.png"></div></body></html>"""
+
+
+def test_html_import_native_notes_choices_and_table_are_inert_and_versioned(exam_data):
+    client, teacher, student, _, _, m, _ = exam_data
+    upload = SimpleUploadedFile(
+        "native.html", NATIVE_PAPER.encode(), content_type="text/html"
+    )
+    response = client.post(
+        f"/api/v1/materials/{m.pk}/question-html/", {"file": upload}, format="multipart"
+    )
+    assert response.status_code == 200
+    data = response.data
+    assert [q["number"] for q in data["questions"]] == [1, 2, 3, 4]
+    assert all(q["answers"] == [] for q in data["questions"])
+    markup = str(data["sections"])
+    for secret in (
+        "script",
+        "onfocus",
+        "PRIVATE",
+        "Advertising",
+        "secretKey",
+        "http",
+        "<img",
+    ):
+        assert secret not in markup
+    assert "<h3>Library visit</h3>" in markup and "{{1}}" in markup
+    assert "{{3:A}}" in markup and "<table>" in markup
+    assert data["questions"][2]["options"][0]["text"] == "Upstairs"
+    assert any("figures" in warning for warning in data["warnings"])
+    for q, answer in zip(
+        data["questions"], ["upstairs", "upstairs", "A", "upstairs"], strict=True
+    ):
+        q["answers"] = [answer]
+    original = publish(
+        exam_data, data["questions"], presentation="html", sections=data["sections"]
+    )
+    attempt = start(exam_data)
+    assert attempt["sections"] == data["sections"] and attempt["document_pages"] == []
+    assert "answers" not in attempt["questions"][0]
+    client.force_authenticate(teacher)
+    changed = [
+        {**s, "html": s["html"].replace("Library visit", "A newer paper")}
+        for s in data["sections"]
+    ]
+    publish(exam_data, data["questions"], presentation="html", sections=changed)
+    client.force_authenticate(student)
+    assert (
+        client.get(f"/api/v1/mock-attempts/{attempt['id']}/").data["sections"]
+        == original.sections
+    )
+    assert (
+        client.patch(
+            f"/api/v1/mock-attempts/{attempt['id']}/",
+            {"answers": {"1": "upstairs", "2": "upstairs", "3": "A", "4": "upstairs"}},
+            format="json",
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(f"/api/v1/mock-attempts/{attempt['id']}/submit/").data["score"] == 4
+    )
+
+
+def test_html_paper_markers_and_import_permissions(exam_data):
+    client, teacher, student, _, editor, m, _ = exam_data
+    path = f"/api/v1/materials/{m.pk}/questions/"
+    for html in ("<p>No answers here</p>", "{{2}}", "{{1}}{{1}}", "{{1:A}}"):
+        r = client.put(
+            path,
+            {
+                "questions": [choice()],
+                "presentation": "html",
+                "sections": [{"part": 1, "html": html}],
+            },
+            format="json",
+        )
+        assert r.status_code == 400
+    client.force_authenticate(student)
+    assert client.post(
+        f"/api/v1/materials/{m.pk}/question-html/",
+        {"file": SimpleUploadedFile("paper.html", NATIVE_PAPER.encode())},
+        format="multipart",
+    ).status_code in (403, 404)
+    client.force_authenticate(editor)
+    assert client.post(
+        f"/api/v1/materials/{m.pk}/question-html/",
+        {"file": SimpleUploadedFile("paper.html", NATIVE_PAPER.encode())},
+        format="multipart",
+    ).status_code in (403, 404)

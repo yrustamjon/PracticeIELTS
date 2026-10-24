@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from .html_paper import MARKER, sanitize
 from .models import Question, QuestionDocument
 
 
@@ -90,10 +91,16 @@ class QuestionInput(serializers.Serializer):
         return data
 
 
+class PaperSectionInput(serializers.Serializer):
+    part = serializers.IntegerField(min_value=1, max_value=4)
+    html = serializers.CharField(max_length=100_000)
+
+
 class QuestionSetInput(serializers.Serializer):
     presentation = serializers.ChoiceField(
-        choices=["text", "pdf", "legacy_pdf"], default="text"
+        choices=["text", "html", "pdf", "legacy_pdf"], default="text"
     )
+    sections = PaperSectionInput(many=True, required=False, default=list, max_length=20)
     questions = QuestionInput(many=True, allow_empty=False, max_length=100)
     document = serializers.IntegerField(required=False, allow_null=True)
     document_pages = serializers.ListField(
@@ -106,6 +113,57 @@ class QuestionSetInput(serializers.Serializer):
     )
 
     def validate(self, data):
+        if data["presentation"] == "html":
+            if (
+                not data["sections"]
+                or sum(len(s["html"]) for s in data["sections"]) > 100_000
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "sections": "Provide a question paper of up to 100,000 characters."
+                    }
+                )
+            by_number = {q["number"]: q for q in data["questions"]}
+            placed = {}
+            for section in data["sections"]:
+                section["html"] = sanitize(section["html"])
+                for match in MARKER.finditer(section["html"]):
+                    n, key = int(match[1]), match[2]
+                    if (
+                        n not in by_number
+                        or by_number[n]["part"] != section["part"]
+                        or (
+                            key
+                            and key not in [o["key"] for o in by_number[n]["options"]]
+                        )
+                    ):
+                        raise serializers.ValidationError(
+                            {
+                                "sections": f"Marker {match[0]} does not match a question/option in Part {section['part']}."
+                            }
+                        )
+                    placed.setdefault(n, []).append(key)
+            if set(placed) != set(by_number):
+                raise serializers.ValidationError(
+                    {
+                        "sections": "Place every question in the formatted paper using {{1}}, {{2}} or option markers {{3:A}}."
+                    }
+                )
+            for n, markers in placed.items():
+                if len(markers) != len(set(markers)) or (
+                    None in markers and len(markers) != 1
+                ):
+                    raise serializers.ValidationError(
+                        {"sections": f"Question {n} has duplicate answer fields."}
+                    )
+                if None not in markers and set(markers) != {
+                    o["key"] for o in by_number[n]["options"]
+                }:
+                    raise serializers.ValidationError(
+                        {
+                            "sections": f"Question {n}: include a control for every option."
+                        }
+                    )
         if data["presentation"] == "pdf" and (
             not data.get("document") or not data["document_pages"]
         ):
@@ -197,7 +255,13 @@ class QuestionSetInput(serializers.Serializer):
             if (
                 q["type"] == "table_completion"
                 and not table
-                and (data["presentation"] == "text" or not data.get("document"))
+                and (
+                    data["presentation"] == "text"
+                    or (
+                        data["presentation"] == "legacy_pdf"
+                        and not data.get("document")
+                    )
+                )
             ):
                 raise serializers.ValidationError(
                     {"context": "Provide the completion table as text rows and cells."}

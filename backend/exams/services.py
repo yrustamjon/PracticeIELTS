@@ -50,6 +50,7 @@ def question_set_data(qs, reveal=True):
         "document": qs.document_id,
         "document_pages": qs.document_pages,
         "presentation": qs.presentation,
+        "sections": qs.sections,
         "duration_seconds": qs.duration_seconds,
         "published_at": qs.published_at,
         "questions": [
@@ -63,7 +64,7 @@ def question_set_data(qs, reveal=True):
 
 def require_text_content(qs):
     """Do not start new image-free exams with unusable legacy PDF placeholders."""
-    if qs.presentation == "pdf":
+    if qs.presentation in ("pdf", "html"):
         return
     missing = []
     for q in qs.questions.all():
@@ -119,6 +120,7 @@ def save_question_set(material, validated, user):
             document=document,
             document_pages=pages,
             presentation=validated["presentation"],
+            sections=validated["sections"],
             duration_seconds=validated["duration_seconds"],
         )
         for data in validated["questions"]:
@@ -232,6 +234,7 @@ def attempt_data(attempt):
         else [],
         "presentation": qs.presentation,
         "score": attempt.score,
+        "sections": qs.sections,
         "total": len(questions),
     }
     if submitted:

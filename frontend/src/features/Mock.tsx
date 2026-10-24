@@ -1,3 +1,5 @@
+import { createPortal } from "react-dom";
+import { HtmlQuestionPaper } from "../components/HtmlQuestionPaper";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
@@ -296,6 +298,8 @@ function ExamAudio({
   const [playing, setPlaying] = useState(false);
   const [ended, setEnded] = useState(false);
   const [volume, setVolume] = useState(1);
+  const [elapsed, setElapsed] = useState(0);
+  const [duration, setDuration] = useState(0);
   useEffect(
     () => () => {
       audio.current?.pause();
@@ -332,6 +336,8 @@ function ExamAudio({
       <audio
         ref={audio}
         preload="none"
+        onTimeUpdate={(e) => setElapsed(e.currentTarget.currentTime)}
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onPlay={() => {
           setPlaying(true);
           onPlaying(true);
@@ -374,6 +380,17 @@ function ExamAudio({
           <Play size={16} />
           {loading ? "Loading…" : "Start audio once"}
         </button>
+        <span className="exam-recording-time">
+          {Math.floor(elapsed / 60)}:
+          {String(Math.floor(elapsed) % 60).padStart(2, "0")} /{" "}
+          {Math.floor(duration / 60)}:
+          {String(Math.floor(duration) % 60).padStart(2, "0")}
+        </span>
+        <progress
+          aria-label="Recording progress"
+          max={duration || 1}
+          value={elapsed}
+        />
         <label>
           <Volume2 size={18} />
           <input
@@ -399,6 +416,8 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
   const navigate = useNavigate();
   const cache = useQueryClient();
   const [answers, setAnswers] = useState(initial.answers);
+  const [audioSlot, setAudioSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setAudioSlot(document.getElementById("exam-audio-slot")), []);
   const [part, setPart] = useState(
     Math.min(...initial.questions.map((q) => q.part)),
   );
@@ -630,6 +649,19 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
         description="Listening test · answer while you listen"
         action={
           <div className="exam-header-actions">
+            <button
+              className="button secondary exam-fullscreen"
+              aria-label="Toggle exam fullscreen"
+              onClick={() => {
+                if (document.fullscreenElement) void document.exitFullscreen();
+                else
+                  void document
+                    .querySelector<HTMLElement>(".exam-shell")
+                    ?.requestFullscreen();
+              }}
+            >
+              ⛶
+            </button>
             {remaining === null ? (
               <span className="difficulty-badge">
                 <Clock size={16} />
@@ -667,7 +699,14 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
         <span className="save-status">{save}</span>
       </div>
       {error != null && <ErrorState error={error} />}
-      <ExamAudio attempt={initial} onPlaying={setAudioPlaying} />
+      {audioSlot ? (
+        createPortal(
+          <ExamAudio attempt={initial} onPlaying={setAudioPlaying} />,
+          audioSlot,
+        )
+      ) : (
+        <ExamAudio attempt={initial} onPlaying={setAudioPlaying} />
+      )}
       <div className="exam-part-tabs">
         {parts.map((p) => (
           <button
@@ -694,14 +733,23 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
             <div>
               <h2>Part {part}</h2>
               <p className="muted">
-                Questions {questions[0]?.number}–{questions.at(-1)?.number}
+                Listen and answer questions {questions[0]?.number}–
+                {questions.at(-1)?.number}.
               </p>
             </div>
             <span className="pill">
               {remaining === null ? "Untimed" : "Timed"}
             </span>
           </div>
-          {initial.presentation === "pdf" ? (
+          {initial.presentation === "html" ? (
+            <HtmlQuestionPaper
+              sections={(initial.sections || []).filter((s) => s.part === part)}
+              questions={initial.questions}
+              answers={answers}
+              onAnswer={answer}
+              disabled={busy}
+            />
+          ) : initial.presentation === "pdf" ? (
             <div className="exam-original-paper">
               <div className="pdf-controls">
                 <button
@@ -783,6 +831,22 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
               ))}
             </>
           )}
+          {initial.presentation === "html" && (
+            <div className="pdf-review-flags">
+              {questions.map((q) => (
+                <button
+                  key={q.number}
+                  className="review-toggle"
+                  aria-label={`Mark question ${q.number} for review`}
+                  aria-pressed={flags.includes(q.number)}
+                  onClick={() => toggleFlag(q.number)}
+                >
+                  Question {q.number} ·{" "}
+                  {flags.includes(q.number) ? "Marked for review" : "Review"}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="workspace-navigation">
             <button
               className="button secondary"
@@ -824,7 +888,10 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
         </div>
         <div className="question-nav-parts">
           {parts.map((p) => (
-            <div className="question-nav-part" key={p}>
+            <div
+              className={`question-nav-part ${part === p ? "active" : ""}`}
+              key={p}
+            >
               <button
                 className="question-nav-label"
                 onClick={() => goPart(p)}
@@ -832,6 +899,12 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
               >
                 Part {p}
               </button>
+              {part !== p && (
+                <small>
+                  {initial.questions.filter((q) => q.part === p).length}{" "}
+                  questions
+                </small>
+              )}
               <div>
                 {initial.questions
                   .filter((q) => q.part === p)

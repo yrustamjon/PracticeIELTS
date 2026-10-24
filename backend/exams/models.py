@@ -32,10 +32,12 @@ class QuestionSet(models.Model):
         QuestionDocument, null=True, blank=True, on_delete=models.PROTECT
     )
     document_pages = models.JSONField(default=list)
+    sections = models.JSONField(default=list)
     presentation = models.CharField(
         max_length=16,
         choices=[
             ("text", "Interactive text"),
+            ("html", "Native formatted question paper"),
             ("pdf", "Original PDF with answer fields"),
             ("legacy_pdf", "Legacy PDF"),
         ],

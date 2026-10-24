@@ -236,7 +236,8 @@ export type ExamQuestion = {
   selections?: number;
 };
 export type QuestionSet = {
-  presentation: "text" | "pdf" | "legacy_pdf";
+  presentation: "text" | "html" | "pdf" | "legacy_pdf";
+  sections?: PaperSection[];
   id: number;
   audio: number;
   document: number | null;
@@ -257,7 +258,8 @@ export type QuestionDraftResult = {
   warnings: string[];
 };
 export type MockAttempt = {
-  presentation: "text" | "pdf" | "legacy_pdf";
+  presentation: "text" | "html" | "pdf" | "legacy_pdf";
+  sections?: PaperSection[];
   id: number;
   material: number;
   title: string;
@@ -280,4 +282,11 @@ export type MockAttempt = {
   }[];
 };
 
-export type PdfField = { page: number; x: number; y: number; width: number; height: number };
+export type PdfField = {
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+export type PaperSection = { part: number; html: string };

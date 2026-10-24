@@ -20,6 +20,7 @@ from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from exams.html_paper import import_question_html
 from exams.intake import document_drafts
 from exams.models import QuestionDocument
 from exams.serializers import (
@@ -197,6 +198,30 @@ class MaterialViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
         document = get_object_or_404(material.question_documents, pk=data["document"])
         return Response(document_drafts(document, data["pages"]))
+
+    @extend_schema(
+        request=inline_serializer(
+            name="QuestionHtmlUpload", fields={"file": serializers.FileField()}
+        ),
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=True, methods=["post"], url_path="question-html")
+    def question_html(self, request, pk=None):
+        self.editor_material(request)
+        file = request.FILES.get("file")
+        if (
+            not file
+            or not file.name.lower().endswith((".html", ".htm"))
+            or file.size > 1_000_000
+        ):
+            raise ValidationError(
+                {"file": "Choose an HTML question paper smaller than 1 MB."}
+            )
+        try:
+            text = file.read().decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValidationError({"file": "Use UTF-8 HTML."}) from exc
+        return Response(import_question_html(text))
 
     def perform_create(self, serializer):
         obj = serializer.save(owner=self.request.user)

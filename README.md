@@ -70,6 +70,16 @@ Optional reference text uses recognized-word anchors. Unmatched words keep unkno
 
 The supported Hub HTTPS downloader is used behind proxies with TLS verification intact. Required download hosts include `huggingface.co` and its actual model CDN `us.aws.cdn.hf.co`; cloud settings also retain the Hub/Xet download domains. `av==15.1.0` is pinned because newer PyAV removed an API used by the installed speech provider.
 
+## Native HTML exam like the supplied reference
+
+The listening workspace now uses a compact white header/audio toolbar, a full question paper and bottom Part navigation. Notes, forms and tables retain their complete text with native answer fields embedded in place; radio/checkbox choices stay beside their option text. The current part expands its question numbers, while other parts show their actual question counts. Timed/untimed behavior, autosave, review flags and one-play audio restrictions remain enforced. Fullscreen is available from the exam toolbar; source controls that reveal keys/transcripts or unrestricted replay are not copied.
+
+In Content Studio, upload **HTML question paper**. The importer recognizes `id="part1"` … `id="part4"` sections and `data-question="1"` … `"40"` text inputs, radio/checkbox options and select controls, including the format of the user's reference. It creates editable sections and question drafts. Review all content and enter each answer key, then save and explicitly publish. Existing keys for matching question numbers are preserved rather than read from source scripts. In the formatted-paper editor, `{{1}}` marks an answer blank; `{{3:A}}` inserts one option control. Backend validation requires every question/option marker to match its part and option labels.
+
+Only an inert, limited set of formatting tags and table spans is saved. Source scripts, event handlers, embedded keys, styles, source header/footer promotions and remote images/media are omitted. The provided reference contains an externally hosted map; importing its text does not import that figure. Review missing-figure warnings and supply an authorized complete representation before publishing such questions. This feature imports the reference's question format; it does not automatically recreate arbitrary PDF layouts as HTML. Original PDF and text-only modes remain available below.
+
+After pulling, apply the migration from **inside backend** with your activated environment: `python manage.py migrate`. Existing saved/published question sets remain pinned; upload/import and publish a new version to use the native paper format.
+
 ## Exam questions and PDFs
 
 Upload the question PDF and keep **Original PDF layout with interactive answer blanks** enabled. The original page is rendered with PDF.js, keeping the headings, complete text, fonts, tables, graphics and spacing. HTML answer fields sit over the actual blanks; answers autosave through the normal exam API. The selectable text layer and zoom controls remain available. This is the original document with working fields, not a reconstruction from isolated extracted prompts.

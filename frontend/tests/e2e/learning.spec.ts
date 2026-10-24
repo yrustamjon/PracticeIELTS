@@ -351,6 +351,10 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
   ).toHaveCount(0);
   await studentPage.getByLabel("Answer 1", { exact: true }).fill("upstairs");
   await studentPage
+    .getByRole("navigation", { name: "Question navigation", exact: true })
+    .getByRole("button", { name: "Part 2", exact: true })
+    .click();
+  await studentPage
     .getByRole("button", { name: "Go to question 2, unanswered", exact: true })
     .click();
   await expect(
@@ -381,12 +385,20 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     "upstairs",
   );
   await studentPage.reload();
+  await studentPage
+    .getByRole("navigation", { name: "Question navigation", exact: true })
+    .getByRole("button", { name: "Part 2", exact: true })
+    .click();
   await expect(
     studentPage.getByRole("button", {
       name: "Go to question 2, answered, marked for review",
       exact: true,
     }),
   ).toBeVisible();
+  await studentPage
+    .getByRole("navigation", { name: "Question navigation", exact: true })
+    .getByRole("button", { name: "Part 1", exact: true })
+    .click();
   await expect(studentPage.getByLabel("Answer 1", { exact: true })).toHaveValue(
     "upstairs",
   );
@@ -638,6 +650,7 @@ test("forty text questions across four parts remain usable on desktop and mobile
   const cell = page.getByLabel("Answer 6", { exact: true });
   await expect(cell.locator("xpath=..")).toHaveJSProperty("tagName", "TD");
   await cell.fill("upstairs");
+  await nav.getByRole("button", { name: "Part 4", exact: true }).click();
   await nav
     .getByRole("button", { name: "Go to question 40, unanswered", exact: true })
     .click();
@@ -652,6 +665,7 @@ test("forty text questions across four parts remain usable on desktop and mobile
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
+  await nav.getByRole("button", { name: "Part 1", exact: true }).click();
   await nav
     .getByRole("button", { name: "Go to question 6, answered", exact: true })
     .click();
@@ -675,6 +689,7 @@ test("forty text questions across four parts remain usable on desktop and mobile
   await expect(page.getByLabel("Answer 1", { exact: true })).toHaveValue(
     "upstairs",
   );
+  await nav.getByRole("button", { name: "Part 4", exact: true }).click();
   await expect(
     nav.getByRole("button", {
       name: "Go to question 40, answered, marked for review",
@@ -854,6 +869,132 @@ test("original two-page PDF keeps headings, notes and table with ten positioned 
     "Sam",
   );
   learner.on("dialog", (d) => d.accept());
+  await learner
+    .getByRole("button", { name: "Submit Mock", exact: true })
+    .first()
+    .click();
+  await expect(
+    learner.getByRole("heading", { name: "100% correct", exact: true }),
+  ).toBeVisible();
+  await context.close();
+});
+
+test("reference-style native HTML keeps notes, choices and tables interactive", async ({
+  page,
+  browser,
+}) => {
+  const material = fixture("create_text_mock").toString().trim();
+  await login(page, teacher);
+  await page.goto(`/admin/${material}`);
+  const html = `<html><body><header>Promotion never imported</header><div id="part1"><p><strong>Questions 1–2</strong></p><p>Complete the notes. Write ONE WORD for each answer.</p><div class="gx-notes"><p class="gx-notes-title">Library visit</p><p class="gx-sec-title">Booking details</p><ul><li>Meeting point: <input type="text" data-question="1"> before nine.</li><li>Collect your books <input type="text" data-question="2"> at the counter.</li></ul></div><script>window.stolenAnswers = 'do not import';</script></div><div id="part2"><p><strong>Questions 3–4</strong></p><p>Choose the correct room, then complete the table.</p><label><input type="radio" data-question="3" value="A"> A Upstairs</label><label><input type="radio" data-question="3" value="B"> B Downstairs</label><table><tr><th>Item</th><th>Place</th></tr><tr><td>Books</td><td><input type="text" data-question="4"></td></tr></table></div></body></html>`;
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByLabel("HTML question paper", { exact: true })
+    .setInputFiles({
+      name: "native-paper.html",
+      mimeType: "text/html",
+      buffer: Buffer.from(html),
+    });
+  await expect(
+    page
+      .locator(".native-paper-editor")
+      .getByRole("heading", { name: "Library visit", exact: true }),
+  ).toBeVisible();
+  for (const [n, value] of [
+    [1, "upstairs"],
+    [2, "upstairs"],
+    [3, "A"],
+    [4, "upstairs"],
+  ] as const)
+    await page.getByLabel(`Question ${n} answers`, { exact: true }).fill(value);
+  await page
+    .getByRole("button", { name: "Save exam questions", exact: true })
+    .click();
+  await expect(
+    page.getByText(
+      "Questions saved as a new version. Publishing will release Mock and Practice together.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page
+    .getByRole("checkbox", {
+      name: "I listened to the generated segments and reviewed the transcript.",
+      exact: true,
+    })
+    .check();
+  await page
+    .getByRole("button", {
+      name: "Approve & publish Mock + Practice",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByText(
+      "Material published. Its Practice levels are available in the student library.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+  });
+  const learner = await context.newPage();
+  await login(learner, student);
+  await learner.goto(`/library/${material}?mode=mock`);
+  await learner.getByRole("radio", { name: /Mock · No time limit/ }).check();
+  await learner
+    .getByRole("button", { name: "Start Mock", exact: true })
+    .click();
+  await expect(
+    learner.getByRole("heading", { name: "Library visit", exact: true }),
+  ).toBeVisible();
+  await expect(
+    learner.getByLabel("Answer 1", { exact: true }).locator("xpath=../.."),
+  ).toContainText("before nine.");
+  await learner.getByLabel("Answer 1", { exact: true }).fill("upstairs");
+  await learner.getByLabel("Answer 2", { exact: true }).fill("upstairs");
+  await expect(learner.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(learner.locator(".exam-topbar .exam-audio")).toBeVisible();
+  await expect(learner.locator("canvas, iframe, img")).toHaveCount(0);
+  expect(
+    await learner.evaluate(
+      () => (window as unknown as { stolenAnswers?: string }).stolenAnswers,
+    ),
+  ).toBeUndefined();
+  await learner.screenshot({
+    path: "test-results/native-reference-desktop.png",
+    fullPage: true,
+  });
+  const nav = learner.getByRole("navigation", {
+    name: "Question navigation",
+    exact: true,
+  });
+  await nav.getByRole("button", { name: "Part 2", exact: true }).click();
+  await learner
+    .getByRole("radio", { name: "3: A. Upstairs", exact: true })
+    .check();
+  const answer = learner.getByLabel("Answer 4", { exact: true });
+  await expect(answer.locator("xpath=../..")).toHaveJSProperty("tagName", "TD");
+  await answer.fill("upstairs");
+  await expect(learner.getByText("Saved", { exact: true })).toBeVisible();
+  await learner.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await learner.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await learner.screenshot({
+    path: "test-results/native-reference-mobile.png",
+    fullPage: true,
+  });
+  await learner.reload();
+  await expect(learner.getByLabel("Answer 1", { exact: true })).toHaveValue(
+    "upstairs",
+  );
+  await nav.getByRole("button", { name: "Part 2", exact: true }).click();
+  await expect(
+    learner.getByRole("radio", { name: "3: A. Upstairs", exact: true }),
+  ).toBeChecked();
+  learner.on("dialog", (dialog) => dialog.accept());
   await learner
     .getByRole("button", { name: "Submit Mock", exact: true })
     .first()

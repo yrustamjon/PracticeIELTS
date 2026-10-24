@@ -17,7 +17,9 @@ import {
   type QuestionDocument,
   type QuestionDraftResult,
   type PdfField,
+  type PaperSection,
 } from "../services/api";
+import { HtmlQuestionPaper } from "../components/HtmlQuestionPaper";
 import { ErrorState } from "../components/ui";
 import { PrivateImage } from "../components/PrivateImage";
 const PdfQuestionPage = lazy(() => import("../components/PdfQuestionPage"));
@@ -61,7 +63,10 @@ export function QuestionStudio({
   const cache = useQueryClient();
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [pages, setPages] = useState<number[]>([]);
-  const [presentation, setPresentation] = useState<"text" | "pdf">("text");
+  const [presentation, setPresentation] = useState<"text" | "html" | "pdf">(
+    "text",
+  );
+  const [sections, setSections] = useState<PaperSection[]>([]);
   const [placementQuestion, setPlacementQuestion] = useState(1);
   const [sourceDocument, setSourceDocument] = useState<number | null>(null);
   const [minutes, setMinutes] = useState(30);
@@ -88,7 +93,12 @@ export function QuestionStudio({
     if (qs.data && !dirty) {
       setQuestions(qs.data.questions);
       setSourceDocument(qs.data.document);
-      setPresentation(qs.data.presentation === "pdf" ? "pdf" : "text");
+      setPresentation(
+        qs.data.presentation === "pdf" || qs.data.presentation === "html"
+          ? qs.data.presentation
+          : "text",
+      );
+      setSections(qs.data.sections || []);
       setPages(qs.data.document_pages);
       setMinutes(qs.data.duration_seconds / 60);
     }
@@ -202,6 +212,48 @@ export function QuestionStudio({
       setBusy(false);
     }
   }
+  async function importHtml(file: File) {
+    setBusy(true);
+    setError(undefined);
+    setMessage("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const draft = await api<{
+        sections: PaperSection[];
+        questions: ExamQuestion[];
+        warnings: string[];
+      }>(`materials/${materialId}/question-html/`, {
+        method: "POST",
+        body: form,
+      });
+      if (
+        questions.length &&
+        !window.confirm(
+          "Replace the question drafts with this HTML paper? Matching question numbers keep their existing answer keys.",
+        )
+      )
+        return;
+      setQuestions(
+        draft.questions.map((q) => ({
+          ...q,
+          answers: questions.find((old) => old.number === q.number)
+            ?.answers || [""],
+        })),
+      );
+      setSections(draft.sections);
+      setPresentation("html");
+      setDraftWarnings(draft.warnings);
+      setDirty(true);
+      setMessage(
+        "Native question paper imported. Review the complete notes and controls, then enter/check each answer key before saving.",
+      );
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function save() {
     setBusy(true);
     setError(undefined);
@@ -212,8 +264,9 @@ export function QuestionStudio({
         body: JSON.stringify({
           questions,
           presentation,
-          document: sourceDocument,
-          document_pages: pages,
+          sections: presentation === "html" ? sections : [],
+          document: presentation === "html" ? null : sourceDocument,
+          document_pages: presentation === "html" ? [] : pages,
           duration_seconds: Math.round(minutes * 60),
         }),
       });
@@ -253,6 +306,68 @@ export function QuestionStudio({
         </div>
       )}
       {qs.error && <ErrorState error={qs.error} />}
+      <div className="native-paper-import">
+        <label>
+          Native HTML question paper
+          <input
+            aria-label="HTML question paper"
+            type="file"
+            accept=".html,.htm"
+            disabled={busy}
+            onChange={(e) => {
+              if (e.target.files?.[0]) void importHtml(e.target.files[0]);
+            }}
+          />
+        </label>
+        <p className="muted">
+          Import a question paper like the supplied example. Notes, lists,
+          tables and answer fields stay together. Scripts, promotions and remote
+          media are omitted; review missing figures before publishing.
+        </p>
+      </div>
+      {presentation === "html" && (
+        <div className="native-paper-editor">
+          <h3>Student paper preview</h3>
+          <HtmlQuestionPaper
+            sections={sections}
+            questions={questions}
+            answers={{}}
+            disabled
+            onAnswer={() => {}}
+          />
+          <details>
+            <summary>Edit formatted paper and answer positions</summary>
+            <p className="muted">
+              Use {"{{1}}, {{2}}"} for answer blanks, or {"{{3:A}} / {{3:B}}"}{" "}
+              for individual choice controls. Each marker must match a question
+              below.
+            </p>
+            {sections.map((section, i) => (
+              <label key={i}>
+                Part {section.part} formatted paper
+                <textarea
+                  aria-label={`Part ${section.part} formatted paper`}
+                  rows={8}
+                  value={section.html}
+                  onChange={(e) => {
+                    setSections((old) =>
+                      old.map((s, n) =>
+                        n === i ? { ...s, html: e.target.value } : s,
+                      ),
+                    );
+                    setDirty(true);
+                  }}
+                />
+              </label>
+            ))}
+          </details>
+          {draftWarnings.map((warning, i) => (
+            <p key={i} className="notice-box">
+              {warning}
+            </p>
+          ))}
+        </div>
+      )}
       <div className="question-pdf-upload">
         <label>
           Question paper (PDF, optional)
