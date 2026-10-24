@@ -132,6 +132,24 @@ async function refreshSession() {
     useAuth.getState().set(d.access, d.user);
   } else useAuth.getState().clear();
 }
+function formatApiError(value: unknown, path: string[] = []): string[] {
+  if (Array.isArray(value))
+    return value.flatMap((item) => formatApiError(item, path));
+  if (value !== null && typeof value === "object")
+    return Object.entries(value).flatMap(([key, item]) => {
+      if (key === "detail") return formatApiError(item, path);
+      const label =
+        path.at(-1) === "questions" && /^\d+$/.test(key)
+          ? `Question ${Number(key) + 1}`
+          : key === "max_words"
+            ? "Maximum answer words"
+            : key.replaceAll("_", " ");
+      return formatApiError(item, [...path, label]);
+    });
+  const label = path.filter((part) => part !== "questions").join(" — ");
+  return [label ? `${label}: ${String(value)}` : String(value)];
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {},
@@ -157,12 +175,7 @@ export async function api<T>(
     let detail = "Something went wrong. Please try again.";
     try {
       const data = await r.json();
-      detail = Object.entries(data)
-        .map(
-          ([key, value]) =>
-            `${key === "detail" ? "" : key + ": "}${Array.isArray(value) ? value.join(" ") : String(value)}`,
-        )
-        .join(" ");
+      detail = formatApiError(data).join(" ");
     } catch {
       /* non-JSON service error */
     }

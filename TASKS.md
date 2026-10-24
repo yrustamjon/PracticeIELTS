@@ -271,3 +271,13 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS â†
 - Status: Pending
 - Subtasks / acceptance criteria: Preserve authoritative text; return word timestamps and confidence; expose unalignable regions; replaceable provider; no fabricated proportional timing.
 - Verification: Real audio/reference alignment fixtures including ASR mismatches and names, plus provider contract tests.
+
+## Real workflow / R2 / REAL-02A â€” PDF layout with inline answer inputs
+- Description: Render approved question-PDF pages in the original IELTS-style layout, including headings, instructions and tables, with real answer inputs at the numbered blanks. Do not show a static PNG beside a separate answer list as the final experience.
+- Milestone: M5 / revised workflow
+- Dependencies: REAL-02
+- Priority: High
+- Status: Pending
+- Subtasks / acceptance criteria: Detect answer-blank positions in text PDFs; review and correct positions before publication; display approved pages with keyboard-accessible inline inputs and autosave; keep answer-key pages private and historical attempts unchanged; show an honest manual fallback for scans or ambiguous layouts.
+- Verification: PDF geometry and page-isolation tests, teacher review and version tests, browser layout/keyboard/autosave flow on the original two-page fixture.
+- Next action: Implement the design in docs/superpowers/specs/2026-10-24-pdf-question-inputs-design.md and plan in docs/superpowers/plans/2026-10-24-pdf-question-inputs.md. No part of this task is claimed complete.
