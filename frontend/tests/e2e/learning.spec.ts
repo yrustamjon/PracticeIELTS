@@ -149,6 +149,12 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     }),
   ).toBeVisible();
   await page.getByRole("checkbox", { name: "Page 1", exact: true }).check();
+  await page
+    .getByRole("checkbox", {
+      name: "Keep original PDF layout with interactive answer blanks",
+      exact: true,
+    })
+    .uncheck();
   await expect(
     page.getByRole("img", {
       name: "Editor preview of question paper, page 1",
@@ -168,6 +174,12 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     page.getByLabel("Question 1 prompt", { exact: true }),
   ).toHaveValue("The books are ____.");
   await page.getByLabel("Question 2 part", { exact: true }).selectOption("2");
+  await page
+    .getByRole("checkbox", {
+      name: "Keep original PDF layout with interactive answer blanks",
+      exact: true,
+    })
+    .uncheck();
   await page
     .getByLabel("Question 2 type", { exact: true })
     .selectOption("multiple_choice");
@@ -677,4 +689,177 @@ test("forty text questions across four parts remain usable on desktop and mobile
   await expect(
     page.getByRole("heading", { name: "8% correct", exact: true }),
   ).toBeVisible();
+});
+
+test("original two-page PDF keeps headings, notes and table with ten positioned answer fields", async ({
+  page,
+  browser,
+}) => {
+  fixture("create_layout_pdf");
+  const material = fixture("create_text_mock").toString().trim();
+  await login(page, teacher);
+  await page.goto(`/admin/${material}`);
+  await page
+    .getByLabel("Question paper PDF", { exact: true })
+    .setInputFiles(pdf);
+  await expect(
+    page.getByRole("heading", {
+      name: "Question paper · 3 pages",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole("checkbox", { name: "Page 1", exact: true }).check();
+  await page.getByRole("checkbox", { name: "Page 2", exact: true }).check();
+  await page
+    .getByLabel("PDF answer key", { exact: true })
+    .fill(
+      "1. Alex\n2. Monday\n3. York\n4. mail\n5. 123\n6. blue\n7. nine\n8. basic\n9. ten\n10. Sam",
+    );
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", {
+      name: "Create editable questions from PDF",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByLabel("Question 10 answers", { exact: true }),
+  ).toHaveValue("Sam");
+  await expect(page.locator(".pdf-answer")).toHaveCount(5);
+  await expect(page.locator(".textLayer")).toContainText("Community Workshop");
+  await expect(page.locator(".textLayer")).toContainText(
+    "Please arrive ten minutes early.",
+  );
+  // Teacher can correct a suggested rectangle on the original page.
+  const field = page.locator(".pdf-answer").first();
+  await field.scrollIntoViewIfNeeded();
+  const rect = await field.boundingBox();
+  await page.mouse.move(rect!.x, rect!.y);
+  await page.mouse.down();
+  await page.mouse.move(rect!.x + rect!.width, rect!.y + rect!.height, {
+    steps: 3,
+  });
+  await page.mouse.up();
+  await expect(
+    page.getByRole("combobox", { name: "Place PDF answer field", exact: true }),
+  ).toHaveValue("1");
+  await page.screenshot({
+    path: "test-results/original-pdf-editor.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Save exam questions", exact: true })
+    .click();
+  await expect(
+    page.getByText(
+      "Questions saved as a new version. Publishing will release Mock and Practice together.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page
+    .getByRole("checkbox", {
+      name: "I listened to the generated segments and reviewed the transcript.",
+      exact: true,
+    })
+    .check();
+  await page
+    .getByRole("button", {
+      name: "Approve & publish Mock + Practice",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByText(
+      "Material published. Its Practice levels are available in the student library.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  const context = await browser.newContext();
+  const learner = await context.newPage();
+  await login(learner, student);
+  await learner.goto(`/library/${material}?mode=mock`);
+  await learner.getByRole("radio", { name: /Mock · No time limit/ }).check();
+  await learner
+    .getByRole("button", { name: "Start Mock", exact: true })
+    .click();
+  await expect(learner.locator(".textLayer")).toContainText(
+    "Registration details",
+  );
+  await expect(learner.locator(".textLayer")).toContainText(
+    "Please arrive ten minutes early.",
+  );
+  await expect(learner.locator(".pdf-answer")).toHaveCount(5);
+  await expect(learner.locator("img")).toHaveCount(0);
+  const keys = [
+    "Alex",
+    "Monday",
+    "York",
+    "mail",
+    "123",
+    "blue",
+    "nine",
+    "basic",
+    "ten",
+    "Sam",
+  ];
+  for (let n = 1; n <= 5; n++)
+    await learner.getByLabel(`Answer ${n}`, { exact: true }).fill(keys[n - 1]);
+  await expect(learner.getByText("Saved", { exact: true })).toBeVisible();
+  await learner.screenshot({
+    path: "test-results/original-pdf-student-page1.png",
+    fullPage: true,
+  });
+  await learner.getByRole("button", { name: "Next page", exact: true }).click();
+  await expect(learner.locator(".textLayer")).toContainText(
+    "Workshop schedule",
+  );
+  await expect(learner.locator(".textLayer")).toContainText(
+    "Bring your notebook and a pencil.",
+  );
+  for (let n = 6; n <= 10; n++)
+    await learner.getByLabel(`Answer ${n}`, { exact: true }).fill(keys[n - 1]);
+  await expect(learner.getByText("Saved", { exact: true })).toBeVisible();
+  const attempt = learner.url().split("/").at(-1)!;
+  const blocked = await learner.evaluate(async (id) => {
+    const r = await fetch(`/api/v1/mock-attempts/${id}/pdf-pages/3/`);
+    return r.status;
+  }, attempt);
+  expect([401, 403]).toContain(blocked);
+  await learner.screenshot({
+    path: "test-results/original-pdf-student-page2.png",
+    fullPage: true,
+  });
+  await learner.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await learner.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await learner
+    .getByRole("button", { name: "Zoom in question paper", exact: true })
+    .click();
+  await expect(learner.locator(".pdf-zoom")).toContainText("120%");
+  await learner.screenshot({
+    path: "test-results/original-pdf-mobile.png",
+    fullPage: true,
+  });
+  await learner.reload();
+  await expect(learner.getByLabel("Answer 1", { exact: true })).toHaveValue(
+    "Alex",
+  );
+  await learner
+    .getByRole("button", { name: "Go to question 10, answered", exact: true })
+    .click();
+  await expect(learner.getByLabel("Answer 10", { exact: true })).toHaveValue(
+    "Sam",
+  );
+  learner.on("dialog", (d) => d.accept());
+  await learner
+    .getByRole("button", { name: "Submit Mock", exact: true })
+    .first()
+    .click();
+  await expect(
+    learner.getByRole("heading", { name: "100% correct", exact: true }),
+  ).toBeVisible();
+  await context.close();
 });

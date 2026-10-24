@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
 import {
@@ -19,6 +19,7 @@ import {
   post,
   type MockAttempt,
   type Material,
+  type PdfField,
 } from "../services/api";
 import {
   Loading,
@@ -28,6 +29,8 @@ import {
   BookCover,
 } from "../components/ui";
 import { QuestionControl, hasAnswer } from "../components/ExamQuestion";
+
+const PdfQuestionPage = lazy(() => import("../components/PdfQuestionPage"));
 
 export function MockSelection({
   materialId,
@@ -399,6 +402,7 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
   const [part, setPart] = useState(
     Math.min(...initial.questions.map((q) => q.part)),
   );
+  const [pdfPage, setPdfPage] = useState(initial.document_pages[0] || 1);
   const [activeQuestion, setActiveQuestion] = useState<number | null>(null);
   const [flags, setFlags] = useState<number[]>(() => {
     try {
@@ -429,11 +433,13 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
     target
       ?.querySelector<HTMLElement>("input, select")
       ?.focus({ preventScroll: true });
-  }, [part, activeQuestion]);
+  }, [part, activeQuestion, pdfPage]);
   function jump(number: number) {
     const question = initial.questions.find((q) => q.number === number);
     if (question) {
       setPart(question.part);
+      const field = question.context.pdf_field as PdfField | undefined;
+      if (field) setPdfPage(field.page);
       setActiveQuestion(number);
       if (question.part === part) {
         const target = document.getElementById(`exam-question-${number}`);
@@ -443,6 +449,12 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
           ?.focus({ preventScroll: true });
       }
     }
+  }
+  function goPart(number: number) {
+    setPart(number);
+    const q = initial.questions.find((q) => q.part === number);
+    const field = q?.context.pdf_field as PdfField | undefined;
+    if (field) setPdfPage(field.page);
   }
   function toggleFlag(number: number) {
     setFlags((old) =>
@@ -661,7 +673,7 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
           <button
             className={part === p ? "active" : ""}
             key={p}
-            onClick={() => setPart(p)}
+            onClick={() => goPart(p)}
           >
             Part {p}
             <small>
@@ -689,22 +701,93 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
               {remaining === null ? "Untimed" : "Timed"}
             </span>
           </div>
-          {questions.map((q) => (
-            <QuestionControl
-              key={q.number}
-              question={q}
-              value={answers[String(q.number)] || ""}
-              disabled={busy}
-              flagged={flags.includes(q.number)}
-              onFlag={() => toggleFlag(q.number)}
-              onChange={(value) => answer(q.number, value)}
-            />
-          ))}
+          {initial.presentation === "pdf" ? (
+            <div className="exam-original-paper">
+              <div className="pdf-controls">
+                <button
+                  className="button secondary"
+                  disabled={initial.document_pages.indexOf(pdfPage) <= 0}
+                  onClick={() =>
+                    setPdfPage(
+                      initial.document_pages[
+                        initial.document_pages.indexOf(pdfPage) - 1
+                      ],
+                    )
+                  }
+                >
+                  Previous page
+                </button>
+                <span>Page {pdfPage}</span>
+                <button
+                  className="button secondary"
+                  disabled={
+                    initial.document_pages.indexOf(pdfPage) >=
+                    initial.document_pages.length - 1
+                  }
+                  onClick={() =>
+                    setPdfPage(
+                      initial.document_pages[
+                        initial.document_pages.indexOf(pdfPage) + 1
+                      ],
+                    )
+                  }
+                >
+                  Next page
+                </button>
+              </div>
+              <Suspense fallback={<Loading />}>
+                <PdfQuestionPage
+                  path={`mock-attempts/${initial.id}/pdf-pages/${pdfPage}/`}
+                  pageNumber={pdfPage}
+                  questions={initial.questions}
+                  answers={answers}
+                  disabled={busy}
+                  onAnswer={answer}
+                />
+              </Suspense>
+              <div className="pdf-review-flags">
+                {initial.questions
+                  .filter(
+                    (q) =>
+                      (q.context.pdf_field as PdfField | undefined)?.page ===
+                      pdfPage,
+                  )
+                  .map((q) => (
+                    <button
+                      className="review-toggle"
+                      key={q.number}
+                      aria-label={`Mark question ${q.number} for review`}
+                      aria-pressed={flags.includes(q.number)}
+                      onClick={() => toggleFlag(q.number)}
+                    >
+                      Question {q.number} ·{" "}
+                      {flags.includes(q.number)
+                        ? "Marked for review"
+                        : "Review"}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {questions.map((q) => (
+                <QuestionControl
+                  key={q.number}
+                  question={q}
+                  value={answers[String(q.number)] || ""}
+                  disabled={busy}
+                  flagged={flags.includes(q.number)}
+                  onFlag={() => toggleFlag(q.number)}
+                  onChange={(value) => answer(q.number, value)}
+                />
+              ))}
+            </>
+          )}
           <div className="workspace-navigation">
             <button
               className="button secondary"
               disabled={parts.indexOf(part) === 0}
-              onClick={() => setPart(parts[parts.indexOf(part) - 1])}
+              onClick={() => goPart(parts[parts.indexOf(part) - 1])}
             >
               <ChevronLeft size={16} />
               Previous part
@@ -721,7 +804,7 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
             ) : (
               <button
                 className="button primary"
-                onClick={() => setPart(parts[parts.indexOf(part) + 1])}
+                onClick={() => goPart(parts[parts.indexOf(part) + 1])}
               >
                 Next part
                 <ChevronRight size={16} />
@@ -744,7 +827,7 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
             <div className="question-nav-part" key={p}>
               <button
                 className="question-nav-label"
-                onClick={() => setPart(p)}
+                onClick={() => goPart(p)}
                 aria-current={part === p ? "step" : undefined}
               >
                 Part {p}

@@ -236,7 +236,7 @@ export type ExamQuestion = {
   selections?: number;
 };
 export type QuestionSet = {
-  presentation: "text" | "legacy_pdf";
+  presentation: "text" | "pdf" | "legacy_pdf";
   id: number;
   audio: number;
   document: number | null;
@@ -257,7 +257,7 @@ export type QuestionDraftResult = {
   warnings: string[];
 };
 export type MockAttempt = {
-  presentation: "text" | "legacy_pdf";
+  presentation: "text" | "pdf" | "legacy_pdf";
   id: number;
   material: number;
   title: string;
@@ -279,3 +279,5 @@ export type MockAttempt = {
     accepted_answers: (string | string[])[];
   }[];
 };
+
+export type PdfField = { page: number; x: number; y: number; width: number; height: number };

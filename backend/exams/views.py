@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 from learning.models import Material
 
 from .models import MockAttempt, QuestionDocument
+from .pdf_layout import isolated_pdf_page
 from .services import (
     attempt_data,
     exam_audio_response,
@@ -222,3 +223,38 @@ class AttemptDocumentPage(APIView):
         ):
             raise PermissionDenied("This PDF page is not available to students.")
         return render_document_page(qs.document, page)
+
+
+class TeacherPdfPage(TeacherDocumentPage):
+    @extend_schema(responses={(200, "application/pdf"): OpenApiTypes.BINARY})
+    def get(self, request, pk, page):
+        document = get_object_or_404(
+            QuestionDocument.objects.select_related("material"), pk=pk
+        )
+        if not request.user.can_edit or not (
+            request.user.is_staff
+            or request.user.role == "admin"
+            or document.material.owner_id == request.user.pk
+        ):
+            raise PermissionDenied("Only authorized editors can preview this document.")
+        return isolated_pdf_page(document, page)
+
+
+class AttemptPdfPage(APIView):
+    @extend_schema(responses={(200, "application/pdf"): OpenApiTypes.BINARY})
+    def get(self, request, pk, page):
+        attempt = get_object_or_404(
+            MockAttempt.objects.select_related("question_set__document"),
+            pk=pk,
+            user=request.user,
+        )
+        qs = attempt.question_set
+        if (
+            qs.presentation != "pdf"
+            or not qs.document_id
+            or page not in qs.document_pages
+        ):
+            raise PermissionDenied(
+                "This question page is not available to this attempt."
+            )
+        return isolated_pdf_page(qs.document, page)

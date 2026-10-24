@@ -63,6 +63,8 @@ def question_set_data(qs, reveal=True):
 
 def require_text_content(qs):
     """Do not start new image-free exams with unusable legacy PDF placeholders."""
+    if qs.presentation == "pdf":
+        return
     missing = []
     for q in qs.questions.all():
         context = q.context if isinstance(q.context, dict) else {}
@@ -226,7 +228,7 @@ def attempt_data(attempt):
         "audio_started": bool(attempt.audio_started_at),
         "questions": [public_question(q, submitted) for q in questions],
         "document_pages": qs.document_pages
-        if qs.document_id and qs.presentation == "legacy_pdf"
+        if qs.document_id and qs.presentation in ("pdf", "legacy_pdf")
         else [],
         "presentation": qs.presentation,
         "score": attempt.score,

@@ -16,3 +16,6 @@
 **/.ruff_cache/
 
 **/.cache/
+
+# Reproducible local PDF.js font/CMap/codec assets
+frontend/public/pdfjs/

@@ -1,3 +1,5 @@
+> **Latest clarification (2026-10-24):** The user subsequently requested one-to-one original PDF appearance with interactive blanks. UX-02 implements the PDF.js/page-isolation/field-review approach below; the earlier text-only clarification is superseded for imported question papers. This historical plan was adapted to the current app and API.
+
 > **Superseded (2026-10-24):** The user explicitly requested no images inside Mock. UX-01 implements interactive text, choices and tables instead. This document is retained only as historical context, not as the current implementation plan.
 
 # PDF layout with inline answer inputs — design

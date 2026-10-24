@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QuestionStudio } from "../src/features/QuestionStudio";
 import { api } from "../src/services/api";
 vi.mock("../src/services/api", () => ({ api: vi.fn() }));
+vi.mock("../src/components/PdfQuestionPage", () => ({
+  default: () => <div>Original PDF with fields</div>,
+}));
 vi.mock("../src/components/PrivateImage", () => ({
   PrivateImage: () => <div>Private editor preview</div>,
 }));
@@ -116,7 +119,7 @@ describe("Reviewed PDF text import", () => {
       .mock.calls.find(([, options]) => options?.method === "PUT")!;
     expect(JSON.parse(String(call[1]?.body))).toMatchObject({
       document: 22,
-      presentation: "text",
+      presentation: "pdf",
       questions: [
         { prompt: "Imported complete question", answers: ["station"] },
       ],

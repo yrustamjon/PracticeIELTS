@@ -110,6 +110,78 @@ elif sys.argv[1] == "create_pdf":
         page[NameObject("/Contents")] = writer._add_object(stream)
     with open(os.environ["TEST_QUESTION_PDF"], "wb") as target:
         writer.write(target)
+elif sys.argv[1] == "create_layout_pdf":
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    content = [
+        [
+            (40, 750, 22, "Community Workshop"),
+            (40, 715, 16, "Registration details"),
+            (40, 680, 12, "Write ONE WORD AND/OR A NUMBER for each answer."),
+            (40, 630, 14, "Name: 1 ........................"),
+            (40, 590, 14, "Day: 2 ........................"),
+            (40, 550, 14, "City: 3 ........................"),
+            (40, 510, 14, "Email: 4 ........................"),
+            (40, 470, 14, "Phone: 5 ........................"),
+            (40, 420, 12, "Please arrive ten minutes early."),
+        ],
+        [
+            (40, 750, 22, "Workshop schedule"),
+            (40, 710, 12, "Complete the table below."),
+            (55, 650, 14, "Detail"),
+            (260, 650, 14, "Your answer"),
+            (55, 610, 14, "Room"),
+            (260, 610, 14, "6 ........................"),
+            (55, 570, 14, "Time"),
+            (260, 570, 14, "7 ........................"),
+            (55, 530, 14, "Level"),
+            (260, 530, 14, "8 ........................"),
+            (55, 490, 14, "Fee"),
+            (260, 490, 14, "9 ........................"),
+            (55, 450, 14, "Teacher"),
+            (260, 450, 14, "10 ........................"),
+            (40, 380, 12, "Bring your notebook and a pencil."),
+        ],
+        [
+            (40, 750, 18, "Private answer key - never show to students"),
+            (
+                40,
+                700,
+                14,
+                "1 Alex 2 Monday 3 York 4 mail 5 123 6 blue 7 nine 8 basic 9 ten 10 Sam",
+            ),
+        ],
+    ]
+    for n, lines in enumerate(content):
+        page = writer.add_blank_page(600, 800)
+        font = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            }
+        )
+        page[NameObject("/Resources")] = DictionaryObject(
+            {
+                NameObject("/Font"): DictionaryObject(
+                    {NameObject("/F1"): writer._add_object(font)}
+                )
+            }
+        )
+        commands = []
+        for x, y, size, text in lines:
+            commands.append(f"BT /F1 {size} Tf {x} {y} Td ({text}) Tj ET")
+        if n == 1:
+            commands.append("q 0.5 w 40 430 500 250 re S 240 430 m 240 680 l S Q")
+            for y in range(440, 641, 40):
+                commands.append(f"40 {y} m 540 {y} l S")
+        stream = DecodedStreamObject()
+        stream.set_data("\n".join(commands).encode())
+        page[NameObject("/Contents")] = writer._add_object(stream)
+    with open(os.environ["TEST_QUESTION_PDF"], "wb") as target:
+        writer.write(target)
 elif sys.argv[1] == "create_text_mock":
     # Explicitly authored original 40-question fixture for navigation/layout,
     # separate from the upload/ASR acceptance tests.

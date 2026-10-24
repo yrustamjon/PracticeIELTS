@@ -10,6 +10,8 @@ import re
 from pypdf import PdfReader
 from rest_framework.exceptions import ValidationError
 
+from .pdf_layout import detect_pdf_blanks
+
 
 def document_drafts(document, pages):
     if not pages or any(n < 1 or n > document.page_count for n in pages):
@@ -92,6 +94,19 @@ def document_drafts(document, pages):
                         "source_page": page,
                     }
                 )
+    fields, inline_drafts, layout_warnings = detect_pdf_blanks(document, pages)
+    by_number = {q["number"]: q for q in drafts}
+    for n, q in inline_drafts.items():
+        if n not in by_number:
+            by_number[n] = q
+    for n, field in fields.items():
+        if n in by_number:
+            by_number[n]["context"]["pdf_field"] = field
+    drafts = list(by_number.values())
+    warnings.extend(layout_warnings)
+    warnings.append(
+        "Review each answer field on the original PDF. Missing or incorrect positions can be drawn manually; scanned pages need manual fields and questions."
+    )
     if not drafts:
         warnings.append(
             "No reliable numbered questions found. Type the questions below; scanned PDFs need manual transcription."

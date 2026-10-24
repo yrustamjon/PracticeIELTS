@@ -34,7 +34,11 @@ class QuestionSet(models.Model):
     document_pages = models.JSONField(default=list)
     presentation = models.CharField(
         max_length=16,
-        choices=[("text", "Interactive text"), ("legacy_pdf", "Legacy PDF")],
+        choices=[
+            ("text", "Interactive text"),
+            ("pdf", "Original PDF with answer fields"),
+            ("legacy_pdf", "Legacy PDF"),
+        ],
         default="text",
     )
     duration_seconds = models.PositiveIntegerField(default=1800)

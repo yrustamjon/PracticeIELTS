@@ -4488,3 +4488,156 @@ html {
     transition: none !important;
   }
 }
+
+/* Original PDF pages retain their typography, graphics and coordinates. */
+.pdf-interactive {
+  min-width: 0;
+  width: 100%;
+}
+.pdf-zoom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 4px;
+  font-size: 12px;
+  color: #526b7d;
+}
+.pdf-zoom > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.pdf-zoom button {
+  border: 1px solid #c8d6df;
+  border-radius: 5px;
+  background: white;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+}
+.pdf-scroll {
+  overflow: auto;
+  max-width: 100%;
+  background: #e9eef2;
+  border: 1px solid #d7e1e8;
+  border-radius: 6px;
+}
+.pdf-original-page {
+  position: relative;
+  background: white;
+  margin: 0 auto;
+  isolation: isolate;
+}
+.pdf-original-page > canvas {
+  display: block;
+}
+.pdf-original-page > .textLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.pdf-answer {
+  position: absolute;
+  z-index: 2;
+  background: white;
+  min-height: 12px;
+  scroll-margin-top: 240px;
+}
+.pdf-answer input:not([type="checkbox"]),
+.pdf-answer select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0 3px;
+  margin: 0;
+  border: 1px solid #87acbc;
+  border-radius: 2px;
+  color: #172f47;
+  background: #f8fdff;
+  font: inherit;
+  line-height: 1.1;
+}
+.pdf-answer input:focus,
+.pdf-answer select:focus {
+  outline: 2px solid #147d92;
+  outline-offset: 1px;
+}
+.pdf-answer fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border: 0;
+  background: white;
+  padding: 1px;
+  min-width: 0;
+}
+.pdf-answer fieldset label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  font: inherit;
+}
+.pdf-answer fieldset input {
+  width: 12px;
+  height: 12px;
+}
+.pdf-placing {
+  cursor: crosshair;
+  touch-action: none;
+}
+.pdf-placing .textLayer,
+.pdf-placing .pdf-answer {
+  pointer-events: none;
+}
+.pdf-placing .pdf-answer {
+  outline: 1px solid #147d92;
+  background: #e4f6fa;
+}
+.pdf-placing .pdf-answer.selected {
+  outline: 3px solid #d09635;
+}
+.pdf-placing .pdf-answer input:disabled,
+.pdf-placing .pdf-answer select:disabled {
+  opacity: 1;
+  color: #147d92;
+  background: #edfafd;
+}
+.pdf-drawn-field {
+  position: absolute;
+  z-index: 3;
+  border: 2px dashed #147d92;
+  background: #147d9220;
+  pointer-events: none;
+}
+.pdf-layout-choice {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin: 16px 0;
+}
+.exam-original-paper {
+  padding: 12px 22px 22px;
+}
+.pdf-review-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 12px;
+}
+@media (max-width: 700px) {
+  .exam-original-paper {
+    padding: 10px;
+  }
+  .pdf-zoom {
+    font-size: 11px;
+  }
+  .pdf-scroll {
+    overscroll-behavior: contain;
+  }
+}

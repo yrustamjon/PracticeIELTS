@@ -92,7 +92,7 @@ class QuestionInput(serializers.Serializer):
 
 class QuestionSetInput(serializers.Serializer):
     presentation = serializers.ChoiceField(
-        choices=["text", "legacy_pdf"], default="text"
+        choices=["text", "pdf", "legacy_pdf"], default="text"
     )
     questions = QuestionInput(many=True, allow_empty=False, max_length=100)
     document = serializers.IntegerField(required=False, allow_null=True)
@@ -106,6 +106,49 @@ class QuestionSetInput(serializers.Serializer):
     )
 
     def validate(self, data):
+        if data["presentation"] == "pdf" and (
+            not data.get("document") or not data["document_pages"]
+        ):
+            raise serializers.ValidationError(
+                {
+                    "document_pages": "Choose the PDF question pages for the original-layout exam."
+                }
+            )
+        for q in data["questions"]:
+            if data["presentation"] == "pdf":
+                field = q["context"].get("pdf_field")
+                if (
+                    not isinstance(field, dict)
+                    or field.get("page") not in data["document_pages"]
+                ):
+                    raise serializers.ValidationError(
+                        {
+                            "questions": f"Question {q['number']}: place its answer field on a selected PDF page."
+                        }
+                    )
+                for name in ("x", "y", "width", "height"):
+                    value = field.get(name)
+                    if (
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                        or not 0 <= value <= 1
+                    ):
+                        raise serializers.ValidationError(
+                            {
+                                "questions": f"Question {q['number']}: invalid answer field dimensions."
+                            }
+                        )
+                if (
+                    field["width"] <= 0
+                    or field["height"] <= 0
+                    or field["x"] + field["width"] > 1.00001
+                    or field["y"] + field["height"] > 1.00001
+                ):
+                    raise serializers.ValidationError(
+                        {
+                            "questions": f"Question {q['number']}: keep the whole answer field inside its PDF page."
+                        }
+                    )
         if (
             any(q["type"] in ("map_label", "diagram_label") for q in data["questions"])
             and not data.get("document")

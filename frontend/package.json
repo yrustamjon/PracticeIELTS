@@ -10,7 +10,10 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "test": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "postinstall": "node scripts/prepare-pdfjs.mjs",
+    "predev": "node scripts/prepare-pdfjs.mjs",
+    "prebuild": "node scripts/prepare-pdfjs.mjs"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +22,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.104.5",
     "lucide-react": "^1.61.0",
+    "pdfjs-dist": "6.4.299",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.4",

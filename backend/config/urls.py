@@ -11,7 +11,13 @@ from accounts.views import (
     RefreshView,
     RegisterView,
 )
-from exams.views import AttemptDocumentPage, MockAttemptViewSet, TeacherDocumentPage
+from exams.views import (
+    AttemptDocumentPage,
+    AttemptPdfPage,
+    MockAttemptViewSet,
+    TeacherDocumentPage,
+    TeacherPdfPage,
+)
 from learning.views import (
     AudioStream,
     CategoryViewSet,
@@ -27,6 +33,13 @@ router.register("materials", MaterialViewSet, basename="material")
 router.register("sessions", SessionViewSet, basename="session")
 router.register("mock-attempts", MockAttemptViewSet, basename="mock-attempt")
 urlpatterns = [
+    path(
+        "api/v1/question-documents/<int:pk>/pdf-pages/<int:page>/",
+        TeacherPdfPage.as_view(),
+    ),
+    path(
+        "api/v1/mock-attempts/<int:pk>/pdf-pages/<int:page>/", AttemptPdfPage.as_view()
+    ),
     path(
         "api/v1/question-documents/<int:pk>/pages/<int:page>/",
         TeacherDocumentPage.as_view(),

@@ -290,3 +290,12 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Verification: Backend PDF text-draft/privacy/version tests, frontend controls/import tests, build, real-browser author→student timed/untimed flows and mobile layout.
 
 - Evidence (2026-10-24): 56 PostgreSQL backend tests including real ASR; 10 frontend tests; TypeScript/production build; 3 live-service browser flows including all nine formats across 40 questions/four parts and 390px phone layout; Django/migration drift/strict OpenAPI/Ruff/diff checks passed. Reviewed desktop/mobile screenshots. New migration preserves historical question sets; no user material rewritten or published.
+
+## PDF / UX-02 — Original question PDF with interactive answer blanks
+- Priority: Critical
+- Status: Completed
+- Latest user clarification: Reproduce the uploaded PDF one-to-one, preserving its complete text, headings, tables, fonts and placement. This supersedes the prior text-only interpretation for imported question papers.
+- Acceptance: Render the original approved PDF page with real writable controls at numbered blanks; detect inline dotted/underscored fields using glyph boxes; teacher position review/manual drawing; one-page authenticated delivery; no unapproved key pages or historical version mutation; autosave/zoom/resume/scoring retained. Scans and ambiguous placements require manual setup, not invented geometry.
+- Verification: Real PDF geometry/page-isolation/privacy tests; frontend existing text-mode compatibility; original two-page/ten-blank browser fixture with full headings, notes, table, entry, resize/zoom, resume and scoring.
+
+- Evidence (2026-10-24): 57 PostgreSQL backend tests including actual local speech; 10 frontend tests; production typecheck/build; all 4 live-service Playwright workflows passed in one final run (44.5 seconds). New original PDF flow verifies 2 question pages/10 positioned blanks, preserved headings/notes/table, teacher drag correction, approved-page privacy, entry/autosave, page navigation, phone zoom, refresh and 100% scoring. Strict schema, checks, migration drift, Ruff and diff checks passed. Desktop/mobile screenshots reviewed; fixtures are original content.

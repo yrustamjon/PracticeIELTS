@@ -581,3 +581,72 @@ def test_new_attempt_cannot_start_with_legacy_pdf_placeholder_but_history_is_pre
     a = start(exam_data)
     assert a["questions"][0]["prompt"] == choice()["prompt"]
     assert old.questions.get().prompt == q["prompt"]
+
+
+def test_pdf_inline_numbered_blanks_have_real_coordinates_and_keep_private_pages(
+    exam_data,
+):
+    client, teacher, student, other, editor, m, _ = exam_data
+    pdf = original_pdf(
+        texts=[
+            "Community workshop\nRegistration form\nWrite ONE WORD for each answer.\nName: 1 ....................\nDay: 2 ....................\nPlease arrive early.",
+            "Schedule\nDetail        Answer\nRoom          3 ....................",
+            "Private answer key: Alex Monday blue",
+        ]
+    )
+    document = client.post(
+        f"/api/v1/materials/{m.pk}/question-document/",
+        {"file": pdf},
+        format="multipart",
+    ).data["id"]
+    response = client.post(
+        f"/api/v1/materials/{m.pk}/question-drafts/",
+        {"document": document, "pages": [1, 2]},
+        format="json",
+    )
+    assert response.status_code == 200
+    drafts = response.data["questions"]
+    assert [q["number"] for q in drafts] == [1, 2, 3]
+    assert "Private answer key" not in str(response.data)
+    for q, answer in zip(drafts, ["Alex", "Monday", "blue"], strict=True):
+        box = q["context"]["pdf_field"]
+        assert 0 < box["x"] < 1 and 0 < box["width"] < 0.6
+        assert 0 < box["y"] < 1 and 0 < box["height"] < 0.1
+        q["answers"] = [answer]
+    publish(
+        exam_data, drafts, presentation="pdf", document=document, document_pages=[1, 2]
+    )
+    attempt = start(exam_data)
+    assert attempt["presentation"] == "pdf" and attempt["document_pages"] == [1, 2]
+    path = f"/api/v1/mock-attempts/{attempt['id']}/pdf-pages/"
+    for page, phrase in [(1, "Registration form"), (2, "Schedule")]:
+        r = client.get(path + f"{page}/")
+        assert r.status_code == 200 and r["Content-Type"] == "application/pdf"
+        parsed = __import__("pypdf").PdfReader(io.BytesIO(r.content))
+        assert len(parsed.pages) == 1 and phrase in parsed.pages[0].extract_text()
+        assert "Private answer key" not in str([p.extract_text() for p in parsed.pages])
+    assert client.get(path + "3/").status_code == 403
+    client.force_authenticate(other)
+    assert client.get(path + "1/").status_code == 404
+    client.force_authenticate(editor)
+    assert (
+        client.get(f"/api/v1/question-documents/{document}/pdf-pages/1/").status_code
+        == 403
+    )
+    client.force_authenticate(teacher)
+    assert (
+        client.get(f"/api/v1/question-documents/{document}/pdf-pages/1/").status_code
+        == 200
+    )
+    drafts[0]["context"]["pdf_field"]["width"] = 2
+    r = client.put(
+        f"/api/v1/materials/{m.pk}/questions/",
+        {
+            "questions": drafts,
+            "presentation": "pdf",
+            "document": document,
+            "document_pages": [1, 2],
+        },
+        format="json",
+    )
+    assert r.status_code == 400 and "dimensions" in str(r.data)

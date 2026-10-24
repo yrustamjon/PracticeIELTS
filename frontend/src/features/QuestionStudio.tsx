@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
@@ -16,9 +16,11 @@ import {
   type QuestionSet,
   type QuestionDocument,
   type QuestionDraftResult,
+  type PdfField,
 } from "../services/api";
 import { ErrorState } from "../components/ui";
 import { PrivateImage } from "../components/PrivateImage";
+const PdfQuestionPage = lazy(() => import("../components/PdfQuestionPage"));
 export const QUESTION_TYPES: [QuestionType, string][] = [
   ["multiple_choice", "Multiple choice"],
   ["matching", "Matching"],
@@ -59,6 +61,8 @@ export function QuestionStudio({
   const cache = useQueryClient();
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [pages, setPages] = useState<number[]>([]);
+  const [presentation, setPresentation] = useState<"text" | "pdf">("text");
+  const [placementQuestion, setPlacementQuestion] = useState(1);
   const [sourceDocument, setSourceDocument] = useState<number | null>(null);
   const [minutes, setMinutes] = useState(30);
   const [page, setPage] = useState(1);
@@ -84,6 +88,7 @@ export function QuestionStudio({
     if (qs.data && !dirty) {
       setQuestions(qs.data.questions);
       setSourceDocument(qs.data.document);
+      setPresentation(qs.data.presentation === "pdf" ? "pdf" : "text");
       setPages(qs.data.document_pages);
       setMinutes(qs.data.duration_seconds / 60);
     }
@@ -112,10 +117,18 @@ export function QuestionStudio({
       cache.setQueryData(["question-document", materialId], d);
       setPages([]);
       setSourceDocument(d.id);
+      setPresentation("pdf");
+      setQuestions((list) =>
+        list.map((q) => {
+          const context = { ...q.context };
+          delete context.pdf_field;
+          return { ...q, context };
+        }),
+      );
       setPage(1);
       setDirty(true);
       setMessage(
-        "PDF saved privately. Select question pages to extract editable text. Students will not see this PDF.",
+        "PDF saved privately. Select question pages, then create questions and review the answer fields on the original page.",
       );
     } catch (e) {
       setError(e);
@@ -161,6 +174,9 @@ export function QuestionStudio({
       )
         return;
       setSourceDocument(document.data.id);
+      setPresentation("pdf");
+      setPage(pages[0]);
+      setPlacementQuestion(drafts.questions[0].number);
       setQuestions(
         drafts.questions.map((draft) => {
           const old = questions.find((q) => q.number === draft.number);
@@ -195,7 +211,7 @@ export function QuestionStudio({
         method: "PUT",
         body: JSON.stringify({
           questions,
-          presentation: "text",
+          presentation,
           document: sourceDocument,
           document_pages: pages,
           duration_seconds: Math.round(minutes * 60),
@@ -225,9 +241,10 @@ export function QuestionStudio({
         <span className="pill">{questions.length} questions</span>
       </div>
       <p className="muted">
-        Type questions or extract editable drafts from a PDF. Students answer
-        directly in the exam: text, choices and tables, with no page images.
-        Review every imported question before publishing.
+        Keep the original PDF layout, including headings, tables and
+        instructions, and place working answer fields over its blanks. Review
+        positions and enter the answer key before publishing. You can also
+        author a text-only exam.
       </p>
       {error != null && <ErrorState error={error} />}
       {message && (
@@ -251,9 +268,9 @@ export function QuestionStudio({
           />
         </label>
         <p className="muted">
-          Up to 15 MB / 50 pages. Text PDFs can produce editable question
-          drafts. Scanned PDFs need manual transcription; the PDF stays private
-          to editors.
+          Up to 15 MB / 50 pages. The original layout is preserved. Numbered
+          text blanks can be positioned automatically; scans and ambiguous
+          blanks need manual placement.
         </p>
       </div>
       {document.data && (
@@ -266,9 +283,9 @@ export function QuestionStudio({
             <span className="pill">Private editor preview</span>
           </div>
           <div className="notice-box">
-            Select only question pages for text extraction. Leave answer-key
-            pages unselected. This preview is for editors only; students see the
-            questions you save below.
+            Select only question pages. In original-layout mode these pages are
+            shown to students with working answer fields. Leave answer-key pages
+            unselected.
           </div>
           <div className="pdf-page-selection">
             {Array.from(
@@ -314,10 +331,84 @@ export function QuestionStudio({
               <ChevronRight size={16} />
             </button>
           </div>
-          <PrivateImage
-            path={`question-documents/${document.data.id}/pages/${page}/`}
-            alt={`Editor preview of question paper, page ${page}`}
-          />
+          <label className="pdf-layout-choice">
+            <input
+              type="checkbox"
+              checked={presentation === "pdf"}
+              onChange={(e) => {
+                setPresentation(e.target.checked ? "pdf" : "text");
+                setSourceDocument(document.data!.id);
+                setDirty(true);
+              }}
+            />
+            Keep original PDF layout with interactive answer blanks
+          </label>
+          {presentation === "pdf" ? (
+            <>
+              <label>
+                Place answer field for
+                <select
+                  aria-label="Place PDF answer field"
+                  value={placementQuestion}
+                  onChange={(e) => setPlacementQuestion(Number(e.target.value))}
+                >
+                  {questions.length ? (
+                    questions.map((q) => (
+                      <option key={q.number} value={q.number}>
+                        Question {q.number}
+                        {q.context.pdf_field
+                          ? " · positioned"
+                          : " · needs position"}
+                      </option>
+                    ))
+                  ) : (
+                    <option value={1}>Create questions first</option>
+                  )}
+                </select>
+              </label>
+              <p className="muted">
+                Review the blue boxes. To move or resize a field, choose its
+                question and drag a new rectangle over the blank. On scanned
+                papers, add questions below and draw each field manually.
+              </p>
+              <Suspense fallback={<p>Opening PDF editor…</p>}>
+                <PdfQuestionPage
+                  path={`question-documents/${document.data.id}/pdf-pages/${page}/`}
+                  pageNumber={page}
+                  questions={questions}
+                  answers={{}}
+                  selectedNumber={placementQuestion}
+                  onPlace={
+                    questions.length
+                      ? (number: number, field: PdfField) => {
+                          const i = questions.findIndex(
+                            (q) => q.number === number,
+                          );
+                          if (i >= 0)
+                            update(i, {
+                              context: {
+                                ...questions[i].context,
+                                pdf_field: field,
+                              },
+                            });
+                        }
+                      : undefined
+                  }
+                />
+              </Suspense>
+              {questions.some((q) => !q.context.pdf_field) && (
+                <p className="notice-box">
+                  Some questions still need an answer field. Choose each missing
+                  question above and draw its rectangle before saving.
+                </p>
+              )}
+            </>
+          ) : (
+            <PrivateImage
+              path={`question-documents/${document.data.id}/pages/${page}/`}
+              alt={`Editor preview of question paper, page ${page}`}
+            />
+          )}
           <details className="optional-transcript">
             <summary>Extracted text (editor only)</summary>
             <p className="muted">
@@ -337,8 +428,9 @@ export function QuestionStudio({
           <details className="optional-transcript" open>
             <summary>Quick setup: PDF to editable questions</summary>
             <p className="muted">
-              Numbered text questions become drafts. Complex tables and layouts
-              need editing below. Answer keys are never guessed.
+              Numbered blanks become editable fields on the original PDF. The
+              complete page stays in place. Review detected boxes; answer keys
+              are never guessed.
             </p>
             <label>
               Answer key (optional) — one answer per line
@@ -377,9 +469,9 @@ export function QuestionStudio({
       )}
       {qs.data?.presentation === "legacy_pdf" && (
         <div className="notice-box">
-          This older question set may rely on PDF images. Copy its complete
-          question text, instructions and tables into the fields below before
-          saving the new text version.
+          This older question set needs review. Import the PDF blanks and keep
+          original layout, or enter complete prompts and tables for a text-only
+          exam.
         </div>
       )}
       <div className="question-list">
@@ -572,9 +664,9 @@ export function QuestionStudio({
               )}
               {["map_label", "diagram_label"].includes(q.type) && (
                 <div className="full notice-box">
-                  Mock contains no images. Write a complete text description in
-                  Student context, or change this to another question type. Do
-                  not rely on the PDF figure.
+                  In original PDF mode the figure stays in its original
+                  position. Place the answer field beside its label. Text-only
+                  mode requires a complete description in Student context.
                 </div>
               )}
             </div>
