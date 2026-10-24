@@ -25,6 +25,7 @@ from .services import (
     finalize_attempt,
     issue_audio_ticket,
     render_document_page,
+    require_text_content,
 )
 
 
@@ -98,6 +99,7 @@ class MockAttemptViewSet(viewsets.ViewSet):
                             }
                         )
                     return Response(attempt_data(previous))
+        require_text_content(material.published_questions)
         with transaction.atomic():
             # The user row serializes concurrent starts, avoiding partial-unique races.
             type(request.user).objects.select_for_update().get(pk=request.user.pk)
@@ -213,6 +215,10 @@ class AttemptDocumentPage(APIView):
             user=request.user,
         )
         qs = attempt.question_set
-        if not qs.document_id or page not in qs.document_pages:
+        if (
+            qs.presentation == "text"
+            or not qs.document_id
+            or page not in qs.document_pages
+        ):
             raise PermissionDenied("This PDF page is not available to students.")
         return render_document_page(qs.document, page)

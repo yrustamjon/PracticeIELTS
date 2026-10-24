@@ -49,6 +49,7 @@ def question_set_data(qs, reveal=True):
         "audio": qs.audio_id,
         "document": qs.document_id,
         "document_pages": qs.document_pages,
+        "presentation": qs.presentation,
         "duration_seconds": qs.duration_seconds,
         "published_at": qs.published_at,
         "questions": [
@@ -58,6 +59,27 @@ def question_set_data(qs, reveal=True):
             )
         ],
     }
+
+
+def require_text_content(qs):
+    """Do not start new image-free exams with unusable legacy PDF placeholders."""
+    missing = []
+    for q in qs.questions.all():
+        context = q.context if isinstance(q.context, dict) else {}
+        if (
+            "answer using the question paper" in q.prompt.lower()
+            or (q.type in ("map_label", "diagram_label") and not context.get("body"))
+            or (q.type == "table_completion" and not context.get("table"))
+        ):
+            missing.append(str(q.number))
+    if missing:
+        raise ValidationError(
+            {
+                "detail": "This mock needs updated text questions before a new attempt can start. Ask the teacher to add complete prompts, tables or descriptions for questions "
+                + ", ".join(missing)
+                + "."
+            }
+        )
 
 
 def save_question_set(material, validated, user):
@@ -79,7 +101,10 @@ def save_question_set(material, validated, user):
         raise ValidationError(
             {"document_pages": "Select a PDF before choosing its pages."}
         )
-    if document and (not pages or max(pages) > document.page_count):
+    if document and (
+        (not pages and validated["presentation"] == "legacy_pdf")
+        or (pages and max(pages) > document.page_count)
+    ):
         raise ValidationError(
             {
                 "document_pages": "Select the question pages students may view; omit answer-key pages."
@@ -91,6 +116,7 @@ def save_question_set(material, validated, user):
             audio=audio,
             document=document,
             document_pages=pages,
+            presentation=validated["presentation"],
             duration_seconds=validated["duration_seconds"],
         )
         for data in validated["questions"]:
@@ -199,7 +225,10 @@ def attempt_data(attempt):
         "answers": attempt.answers,
         "audio_started": bool(attempt.audio_started_at),
         "questions": [public_question(q, submitted) for q in questions],
-        "document_pages": qs.document_pages if qs.document_id else [],
+        "document_pages": qs.document_pages
+        if qs.document_id and qs.presentation == "legacy_pdf"
+        else [],
+        "presentation": qs.presentation,
         "score": attempt.score,
         "total": len(questions),
     }

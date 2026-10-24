@@ -548,20 +548,20 @@ function Editor({
         description="Upload a mock recording. Review its transcript. Practice levels are prepared automatically."
         action={<span className={`status-badge ${m.status}`}>{m.status}</span>}
       />
-      <div className="wizard-steps">
+      <nav className="studio-steps" aria-label="Material setup steps">
         {[
-          "Mock details",
-          "Upload recording",
-          "Questions / PDF",
-          "Review & publish",
-        ].map((s, i) => (
-          <div key={s}>
-            <span>{i + 1}</span>
-            {s}
-            {i < 3 && <ChevronRight size={16} />}
-          </div>
+          ["material-details", "1", "Details"],
+          ["material-audio", "2", "Audio"],
+          ["material-questions", "3", "Questions"],
+          ["material-review", "4", "Review"],
+          ["material-publish", "5", "Publish"],
+        ].map(([target, number, label]) => (
+          <a key={target} href={`#${target}`}>
+            <span>{number}</span>
+            {label}
+          </a>
         ))}
-      </div>
+      </nav>
       {error != null && <ErrorState error={error} />}
       {message && (
         <div className="success" role="status">
@@ -571,7 +571,7 @@ function Editor({
       )}
       <div className="editor-grid">
         <div>
-          <section className="panel form-panel">
+          <section id="material-details" className="panel form-panel">
             <h2>
               <span className="step-number">1</span>Mock details
             </h2>
@@ -626,7 +626,7 @@ function Editor({
               </div>
             </form>
           </section>
-          <section className="panel form-panel">
+          <section id="material-audio" className="panel form-panel">
             <h2>
               <span className="step-number">2</span>Upload the recording once
             </h2>
@@ -765,7 +765,7 @@ function Editor({
             onSaved={onSaved}
             onDirty={setQuestionDirty}
           />
-          <section className="panel form-panel">
+          <section id="material-review" className="panel form-panel">
             <div className="section-title">
               <h2>
                 <span className="step-number">4</span>Review generated
@@ -919,7 +919,7 @@ function Editor({
           </section>
         </div>
         <aside>
-          <section className="panel publish-panel">
+          <section id="material-publish" className="panel publish-panel">
             <h2>One material. All practice levels.</h2>
             <ul className="publish-checks">
               <li>

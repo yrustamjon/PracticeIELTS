@@ -1,5 +1,5 @@
 import { MockSelection } from "./Mock";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -37,11 +37,19 @@ export function Library({ dictation = false }: { dictation?: boolean }) {
   const term = params.get("search") || "";
   const category = params.get("category") || "";
   const [search, setSearch] = useState(term);
+  const mode = dictation ? "practice" : params.get("mode") || "all";
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  useEffect(() => setSearch(term), [term]);
   const materials = useQuery({
-    queryKey: ["materials", term, category],
+    queryKey: ["materials", term, category, mode, page],
     queryFn: () =>
-      api<{ results: Material[] }>(
-        `materials/?search=${encodeURIComponent(term)}&category=${category}`,
+      api<{
+        results: Material[];
+        count: number;
+        next: string | null;
+        previous: string | null;
+      }>(
+        `materials/?search=${encodeURIComponent(term)}&category=${category}&page=${page}${mode === "mock" ? "&mock_available=true" : ""}`,
       ),
   });
   const categories = useQuery({
@@ -58,6 +66,7 @@ export function Library({ dictation = false }: { dictation?: boolean }) {
   function update(key: string, value: string) {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
+    if (key !== "page") next.delete("page");
     setParams(next);
   }
   return (
@@ -88,6 +97,28 @@ export function Library({ dictation = false }: { dictation?: boolean }) {
           </>
         )}
       </div>
+      {!dictation && (
+        <nav className="library-modes" aria-label="Choose practice type">
+          {(
+            [
+              ["all", "All materials", FolderOpen],
+              ["mock", "Mock tests", FileText],
+              ["practice", "Dictation", Headphones],
+              ["transcript", "Transcript study", BookOpen],
+            ] as const
+          ).map(([key, label, Icon]) => (
+            <button
+              key={String(key)}
+              className={mode === key ? "active" : ""}
+              aria-pressed={mode === key}
+              onClick={() => update("mode", String(key))}
+            >
+              <Icon size={17} />
+              {String(label)}
+            </button>
+          ))}
+        </nav>
+      )}
       <div className="panel library-toolbar">
         <form
           className="search-field"
@@ -120,6 +151,27 @@ export function Library({ dictation = false }: { dictation?: boolean }) {
           ))}
         </select>
       </div>
+      {(term || category) && (
+        <div className="active-filters">
+          <span>
+            Showing {term ? `results for “${term}”` : "selected collection"}
+            {selected ? ` · ${selected.name}` : ""}
+          </span>
+          <button
+            className="text-link"
+            onClick={() => {
+              const next = new URLSearchParams(params);
+              next.delete("search");
+              next.delete("category");
+              next.delete("page");
+              setSearch("");
+              setParams(next);
+            }}
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
       {descendants.length > 0 && (
         <div className="collection-chips">
           {descendants.map((c) => (
@@ -138,15 +190,15 @@ export function Library({ dictation = false }: { dictation?: boolean }) {
       ) : materials.data.results.length ? (
         <>
           <div className="results-count">
-            {materials.data.results.length} material
-            {materials.data.results.length !== 1 ? "s" : ""}{" "}
+            {materials.data.count} material
+            {materials.data.count !== 1 ? "s" : ""}{" "}
             {selected && `in ${selected.name}`}
           </div>
           <div className="materials-grid">
             {materials.data.results.map((m) => (
               <Link
                 className="panel material-card"
-                to={`/library/${m.id}${params.get("mode") === "transcript" ? "?mode=transcript" : ""}`}
+                to={`/library/${m.id}${mode !== "all" ? `?mode=${mode}` : ""}`}
                 key={m.id}
               >
                 <div className="material-art">
@@ -165,6 +217,18 @@ export function Library({ dictation = false }: { dictation?: boolean }) {
                     {m.description ||
                       "Make time for focused listening practice."}
                   </p>
+                  <div className="material-modes">
+                    <span>
+                      <Headphones size={13} />
+                      Dictation
+                    </span>
+                    {m.mock_available && (
+                      <span>
+                        <FileText size={13} />
+                        Mock · {m.question_count} questions
+                      </span>
+                    )}
+                  </div>
                   <div className="material-bottom">
                     <span>
                       <Clock size={14} />
@@ -173,7 +237,13 @@ export function Library({ dictation = false }: { dictation?: boolean }) {
                         : "Audio pending"}
                     </span>
                     <span>
-                      Open material
+                      {mode === "mock"
+                        ? "Open Mock"
+                        : mode === "practice"
+                          ? "Start Dictation"
+                          : mode === "transcript"
+                            ? "Study transcript"
+                            : "Choose practice"}
                       <ChevronRight size={14} />
                     </span>
                   </div>
@@ -181,17 +251,36 @@ export function Library({ dictation = false }: { dictation?: boolean }) {
               </Link>
             ))}
           </div>
+          {(materials.data.next || materials.data.previous) && (
+            <nav className="library-pagination" aria-label="Library pages">
+              <button
+                className="button secondary"
+                disabled={!materials.data.previous}
+                onClick={() => update("page", String(page - 1))}
+              >
+                Previous
+              </button>
+              <span>Page {page}</span>
+              <button
+                className="button secondary"
+                disabled={!materials.data.next}
+                onClick={() => update("page", String(page + 1))}
+              >
+                Next
+              </button>
+            </nav>
+          )}
         </>
       ) : (
         <div className="panel">
           <Empty
             title={
-              term
+              term || category || mode === "mock"
                 ? "No matching materials"
                 : "A fresh page for your listening journey"
             }
             description={
-              term
+              term || category || mode === "mock"
                 ? "Try a different keyword or collection."
                 : "No published materials yet. Your teacher can add original or licensed recordings from the Admin Panel."
             }

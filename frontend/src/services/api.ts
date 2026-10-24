@@ -236,6 +236,7 @@ export type ExamQuestion = {
   selections?: number;
 };
 export type QuestionSet = {
+  presentation: "text" | "legacy_pdf";
   id: number;
   audio: number;
   document: number | null;
@@ -250,7 +251,13 @@ export type QuestionDocument = {
   extraction_state: string;
   extracted_text: string;
 };
+export type QuestionDraftResult = {
+  questions: ExamQuestion[];
+  source_text: string;
+  warnings: string[];
+};
 export type MockAttempt = {
+  presentation: "text" | "legacy_pdf";
   id: number;
   material: number;
   title: string;

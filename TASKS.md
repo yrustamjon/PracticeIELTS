@@ -277,7 +277,16 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Milestone: M5 / revised workflow
 - Dependencies: REAL-02
 - Priority: High
-- Status: Pending
+- Status: Superseded by UX-01 (explicit user clarification: no images inside Mock)
 - Subtasks / acceptance criteria: Detect answer-blank positions in text PDFs; review and correct positions before publication; display approved pages with keyboard-accessible inline inputs and autosave; keep answer-key pages private and historical attempts unchanged; show an honest manual fallback for scans or ambiguous layouts.
 - Verification: PDF geometry and page-isolation tests, teacher review and version tests, browser layout/keyboard/autosave flow on the original two-page fixture.
-- Next action: Implement the design in docs/superpowers/specs/2026-10-24-pdf-question-inputs-design.md and plan in docs/superpowers/plans/2026-10-24-pdf-question-inputs.md. No part of this task is claimed complete.
+- Next action: Do not implement the historical PDF.js plan; follow the text-only UX-01 scope.
+
+## Frontend / UX-01 — Simple navigation and text-based IELTS-style Mock
+- Priority: Critical
+- Status: Completed
+- User clarification: No images anywhere inside Mock. This supersedes REAL-02A's pending PDF-layout approach; retain that historical plan as superseded.
+- Acceptance: Focused exam layout; text/choice/table controls; question jump and review flags; timed/untimed/autosave preserved; PDF source stays editor-only with selected-page text drafts and teacher review; simpler responsive library and navigation; no invented content or answer keys.
+- Verification: Backend PDF text-draft/privacy/version tests, frontend controls/import tests, build, real-browser author→student timed/untimed flows and mobile layout.
+
+- Evidence (2026-10-24): 56 PostgreSQL backend tests including real ASR; 10 frontend tests; TypeScript/production build; 3 live-service browser flows including all nine formats across 40 questions/four parts and 390px phone layout; Django/migration drift/strict OpenAPI/Ruff/diff checks passed. Reviewed desktop/mobile screenshots. New migration preserves historical question sets; no user material rewritten or published.

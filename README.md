@@ -7,7 +7,7 @@ A listening-first IELTS platform built with Django REST Framework, React/TypeScr
 1. Create a collection and a listening material in **Admin Panel**.
 2. Save the title, source, license and permission confirmation.
 3. Upload the audio once. The worker uses a real local faster-whisper model to transcribe it and produce word timestamps. An authoritative transcript is optional: paste it or upload UTF-8 TXT / text-based PDF.
-4. Add exam questions with the form, or upload a question PDF, choose the student-visible pages and enter its answer key. PDF quick setup creates numbered answer fields; question types and answer keys require teacher review.
+4. Add exam questions with the form, or upload a text PDF, select question pages and create editable drafts. Review prompts, headings/context, types, options, tables, word limits and your answer key. The student Mock shows interactive text only, with no PDF images.
 5. Listen to generated sentences, correct recognition errors if necessary, confirm review and publish.
 6. Students choose **Listening Mock** (timed or untimed), **Practice**, or **Transcript Study** from the same material. A material without exam questions offers Practice only.
 
@@ -72,11 +72,25 @@ The supported Hub HTTPS downloader is used behind proxies with TLS verification 
 
 ## Exam questions and PDFs
 
-Author multiple choice (including multiple selections), matching, form/note/table/sentence completion, short answers, maps and diagrams. The form accepts options and answer variants without JSON. PDFs up to 15 MB / 50 pages are private. Select only question pages: answer keys printed on selected pages would be visible to students. Scanned pages can be rendered as images; selectable text is extracted for the teacher only. No automatic OCR or arbitrary PDF-to-correct-question/answer parsing is claimed.
+Author multiple choice (including multiple selections), matching, form/note/table/sentence completion and short answers without JSON. Use `____` or `{{answer}}` in a prompt or table cell to put the answer field inline. The first blank in each question is editable; each question has one answer. Give map/diagram questions a complete text description, or adapt them to another type: **Mock contains no images**.
+
+PDFs up to 15 MB / 50 pages remain private editor source files. Select question pages and choose **Create editable questions from PDF**. Simple numbered selectable text and line-labelled choices produce drafts; parts/instructions are retained where recognized. Answer keys are never inferred. Supplied keys or existing keys for matching question numbers are preserved on import. Review every prompt, heading/context, word limit and table before saving. Complex layouts and scanned papers need manual transcription; this is not OCR or arbitrary page reconstruction. A PDF-reference placeholder cannot be saved as a text exam.
+
+Students get a focused exam screen with inline answers, part tabs, numbered question navigation, answered indicators and review flags. Review flags persist in the current browser tab; answers persist on the server. Save & exit retains answers, but the one-play audio restriction still applies. New text question sets do not expose PDF page endpoints to students. Historical question sets/attempts keep their pinned versions; old reference-only prompts must be rewritten by an editor before the material can offer a useful text-only Mock. No existing material is rewritten automatically.
 
 Question sets are versioned. Attempts pin both the transcript/audio version and the published question set. Timed deadlines are server-enforced; untimed attempts have no deadline and never expire because of elapsed time. Draft answers autosave and resume. Submission scores accepted answer variants and makes the attempt read-only.
 
 The exam UI starts audio once. A single-use server ticket delivers it, and study/transcript/hint endpoints for that student's active material are blocked until submission. Once bytes reach a browser, a determined client can record or retain them; this is not DRM or a secure proctoring system. Leaving/reloading stops playback and does not grant a second start. Large recordings currently download into an authenticated blob before playback.
+
+## Interface and navigation
+
+The navy/teal dashboard, library, practice and Content Studio share accessible focus states and responsive cards. Library mode filters open the selected Dictation, Mock or Transcript route directly; search, collection filters, clearing and pagination live in the URL. The mobile drawer closes with Escape. The editor has linked Details → Audio → Questions → Review → Publish steps. Active Mock uses its own compact header, with the general sidebar/search removed from the exam view.
+
+After pulling this increment, apply the new version-preserving migration before starting the backend:
+
+```bash
+backend/.venv/bin/python backend/manage.py migrate
+```
 
 ## Validation
 

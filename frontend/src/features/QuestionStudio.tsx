@@ -15,6 +15,7 @@ import {
   type QuestionType,
   type QuestionSet,
   type QuestionDocument,
+  type QuestionDraftResult,
 } from "../services/api";
 import { ErrorState } from "../components/ui";
 import { PrivateImage } from "../components/PrivateImage";
@@ -58,13 +59,14 @@ export function QuestionStudio({
   const cache = useQueryClient();
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [pages, setPages] = useState<number[]>([]);
+  const [sourceDocument, setSourceDocument] = useState<number | null>(null);
   const [minutes, setMinutes] = useState(30);
   const [page, setPage] = useState(1);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<unknown>();
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [count, setCount] = useState(40);
+  const [draftWarnings, setDraftWarnings] = useState<string[]>([]);
   const [keys, setKeys] = useState("");
   const qs = useQuery({
     queryKey: ["question-set", materialId],
@@ -81,6 +83,7 @@ export function QuestionStudio({
   useEffect(() => {
     if (qs.data && !dirty) {
       setQuestions(qs.data.questions);
+      setSourceDocument(qs.data.document);
       setPages(qs.data.document_pages);
       setMinutes(qs.data.duration_seconds / 60);
     }
@@ -108,10 +111,11 @@ export function QuestionStudio({
       );
       cache.setQueryData(["question-document", materialId], d);
       setPages([]);
+      setSourceDocument(d.id);
       setPage(1);
       setDirty(true);
       setMessage(
-        "PDF saved privately. Select only the question pages students should see.",
+        "PDF saved privately. Select question pages to extract editable text. Students will not see this PDF.",
       );
     } catch (e) {
       setError(e);
@@ -119,9 +123,15 @@ export function QuestionStudio({
       setBusy(false);
     }
   }
-  function fromPdf() {
+  async function fromPdf() {
+    setError(undefined);
+    setBusy(true);
     try {
       if (!document.data) throw new Error("Upload a question PDF first.");
+      if (!pages.length)
+        throw new Error(
+          "Select question pages first. Leave answer-key pages unselected.",
+        );
       const map = new Map<number, string>();
       for (const line of keys.split("\n").filter((s) => s.trim())) {
         const match = line.match(/^\s*(\d+)[.):\s-]+(.+)$/);
@@ -131,26 +141,49 @@ export function QuestionStudio({
         if (map.has(n)) throw new Error(`Answer ${n} is repeated.`);
         map.set(n, match[2].trim());
       }
-      const next = [];
-      for (let n = 1; n <= count; n++) {
-        const answer = map.get(n);
-        if (!answer) throw new Error(`Add the answer key for question ${n}.`);
-        next.push({
-          ...question(n),
-          prompt: `Question ${n} — answer using the question paper.`,
-          answers: answer
-            .split(";")
-            .map((s) => s.trim())
-            .filter(Boolean),
-        });
-      }
-      setQuestions(next);
+      const drafts = await api<QuestionDraftResult>(
+        `materials/${materialId}/question-drafts/`,
+        {
+          method: "POST",
+          body: JSON.stringify({ document: document.data.id, pages }),
+        },
+      );
+      setDraftWarnings(drafts.warnings);
+      if (!drafts.questions.length)
+        throw new Error(
+          "No numbered text questions could be extracted. Copy the selectable text or type the questions below.",
+        );
+      if (
+        questions.length &&
+        !window.confirm(
+          "Replace the current question drafts with PDF text? Existing answer keys for matching question numbers will be kept unless you supplied new keys.",
+        )
+      )
+        return;
+      setSourceDocument(document.data.id);
+      setQuestions(
+        drafts.questions.map((draft) => {
+          const old = questions.find((q) => q.number === draft.number);
+          const key = map.get(draft.number);
+          return {
+            ...draft,
+            answers: key
+              ? key
+                  .split(";")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : old?.answers || [""],
+          };
+        }),
+      );
       setDirty(true);
       setMessage(
-        "Questions prepared from your answer key. Check each type and word limit before saving.",
+        "Editable question drafts created. Review the text, choices and answer keys below before saving.",
       );
     } catch (e) {
       setError(e);
+    } finally {
+      setBusy(false);
     }
   }
   async function save() {
@@ -162,7 +195,8 @@ export function QuestionStudio({
         method: "PUT",
         body: JSON.stringify({
           questions,
-          document: document.data?.id || null,
+          presentation: "text",
+          document: sourceDocument,
           document_pages: pages,
           duration_seconds: Math.round(minutes * 60),
         }),
@@ -180,7 +214,10 @@ export function QuestionStudio({
     }
   }
   return (
-    <section className="panel form-panel question-studio">
+    <section
+      id="material-questions"
+      className="panel form-panel question-studio"
+    >
       <div className="section-title">
         <h2>
           <span className="step-number">3</span>Real exam questions
@@ -188,9 +225,9 @@ export function QuestionStudio({
         <span className="pill">{questions.length} questions</span>
       </div>
       <p className="muted">
-        Type questions, or upload a question paper and enter its answer key. Add
-        options, matching items, completion tasks, tables, maps or diagrams
-        without editing JSON.
+        Type questions or extract editable drafts from a PDF. Students answer
+        directly in the exam: text, choices and tables, with no page images.
+        Review every imported question before publishing.
       </p>
       {error != null && <ErrorState error={error} />}
       {message && (
@@ -214,8 +251,9 @@ export function QuestionStudio({
           />
         </label>
         <p className="muted">
-          Up to 15 MB / 50 pages. Scanned pages can be displayed; text
-          extraction is available only where the PDF contains selectable text.
+          Up to 15 MB / 50 pages. Text PDFs can produce editable question
+          drafts. Scanned PDFs need manual transcription; the PDF stays private
+          to editors.
         </p>
       </div>
       {document.data && (
@@ -228,8 +266,9 @@ export function QuestionStudio({
             <span className="pill">Private editor preview</span>
           </div>
           <div className="notice-box">
-            Select only question pages for students. Answer keys printed on
-            selected pages will be visible to them.
+            Select only question pages for text extraction. Leave answer-key
+            pages unselected. This preview is for editors only; students see the
+            questions you save below.
           </div>
           <div className="pdf-page-selection">
             {Array.from(
@@ -241,6 +280,7 @@ export function QuestionStudio({
                   type="checkbox"
                   checked={pages.includes(n)}
                   onChange={(e) => {
+                    setSourceDocument(document.data!.id);
                     setPages((old) =>
                       e.target.checked
                         ? [...old, n]
@@ -294,44 +334,38 @@ export function QuestionStudio({
               rows={5}
             />
           </details>
-          <details className="optional-transcript">
-            <summary>Quick setup: use PDF questions + an answer key</summary>
+          <details className="optional-transcript" open>
+            <summary>Quick setup: PDF to editable questions</summary>
             <p className="muted">
-              Students will see your selected PDF pages alongside numbered
-              answer fields. Review the generated question types; the site does
-              not invent the answer key.
+              Numbered text questions become drafts. Complex tables and layouts
+              need editing below. Answer keys are never guessed.
             </p>
             <label>
-              Number of questions
-              <input
-                type="number"
-                aria-label="PDF question count"
-                min="1"
-                max="40"
-                value={count}
-                onChange={(e) =>
-                  setCount(Math.max(1, Math.min(40, Number(e.target.value))))
-                }
-              />
-            </label>
-            <label>
-              Answer key — one answer per line
+              Answer key (optional) — one answer per line
               <textarea
                 aria-label="PDF answer key"
-                rows={6}
+                rows={4}
                 value={keys}
                 onChange={(e) => setKeys(e.target.value)}
-                placeholder={"1. station\n2. 15\n3. library; public library"}
+                placeholder={"1. station\n2. A\n3. library; public library"}
               />
             </label>
             <button
               type="button"
               className="button secondary"
-              onClick={fromPdf}
+              disabled={busy || !pages.length}
+              onClick={() => void fromPdf()}
             >
-              <Plus size={16} />
-              Create answer fields from PDF
+              <Plus size={16} />{" "}
+              {busy ? "Reading PDF…" : "Create editable questions from PDF"}
             </button>
+            {draftWarnings.length > 0 && (
+              <ul className="import-warnings">
+                {draftWarnings.map((warning, i) => (
+                  <li key={i}>{warning}</li>
+                ))}
+              </ul>
+            )}
           </details>
         </div>
       )}
@@ -339,6 +373,13 @@ export function QuestionStudio({
         <div className="notice-box">
           A new recording was uploaded. Review and save these questions for that
           recording before publishing.
+        </div>
+      )}
+      {qs.data?.presentation === "legacy_pdf" && (
+        <div className="notice-box">
+          This older question set may rely on PDF images. Copy its complete
+          question text, instructions and tables into the fields below before
+          saving the new text version.
         </div>
       )}
       <div className="question-list">
@@ -399,7 +440,7 @@ export function QuestionStudio({
                   rows={2}
                   value={q.prompt}
                   onChange={(e) => update(i, { prompt: e.target.value })}
-                  placeholder="Write the prompt, or refer to the question in your PDF…"
+                  placeholder="Write the complete question. Use ____ for the answer blank."
                 />
               </label>
               <label className="full">
@@ -487,7 +528,7 @@ export function QuestionStudio({
                 </small>
               </label>
               <label className="full">
-                Context / notes (optional)
+                Student context / description
                 <textarea
                   aria-label={`Question ${i + 1} context`}
                   rows={2}
@@ -497,7 +538,7 @@ export function QuestionStudio({
                       context: { ...q.context, body: e.target.value },
                     })
                   }
-                  placeholder="Heading, form details, note or extra context"
+                  placeholder="Heading, form details or a complete text description. This text will be visible to students."
                 />
               </label>
               {q.type === "table_completion" && (
@@ -531,8 +572,9 @@ export function QuestionStudio({
               )}
               {["map_label", "diagram_label"].includes(q.type) && (
                 <div className="full notice-box">
-                  Upload the map/diagram as a PDF and select its question pages
-                  above. Students will see the figure beside the answer fields.
+                  Mock contains no images. Write a complete text description in
+                  Student context, or change this to another question type. Do
+                  not rely on the PDF figure.
                 </div>
               )}
             </div>

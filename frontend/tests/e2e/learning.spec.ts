@@ -16,6 +16,7 @@ const fixtureEnv = {
   TEST_STUDENT: student,
   TEST_PASSWORD: password,
   TEST_QUESTION_PDF: pdf,
+  TEST_RECORDING: recording,
 };
 function fixture(mode: string, extra: Record<string, string> = {}) {
   return execFileSync(
@@ -65,6 +66,10 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
 }) => {
   test.setTimeout(180000);
   await login(page, teacher);
+  await page.screenshot({
+    path: "test-results/dashboard-desktop.png",
+    fullPage: true,
+  });
   await page.getByRole("link", { name: "Admin Panel", exact: true }).click();
   await page
     .getByRole("button", { name: "Add collection", exact: true })
@@ -151,17 +156,18 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     }),
   ).toBeVisible();
   await page
-    .getByText("Quick setup: use PDF questions + an answer key", {
-      exact: true,
-    })
-    .click();
-  await page.getByLabel("PDF question count", { exact: true }).fill("2");
-  await page
     .getByLabel("PDF answer key", { exact: true })
     .fill("1. upstairs\n2. A");
   await page
-    .getByRole("button", { name: "Create answer fields from PDF", exact: true })
+    .getByRole("button", {
+      name: "Create editable questions from PDF",
+      exact: true,
+    })
     .click();
+  await expect(
+    page.getByLabel("Question 1 prompt", { exact: true }),
+  ).toHaveValue("The books are ____.");
+  await page.getByLabel("Question 2 part", { exact: true }).selectOption("2");
   await page
     .getByLabel("Question 2 type", { exact: true })
     .selectOption("multiple_choice");
@@ -204,6 +210,43 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
   await studentPage
     .getByRole("link", { name: "Practice Library", exact: true })
     .click();
+  await studentPage
+    .getByRole("navigation", { name: "Choose practice type", exact: true })
+    .getByRole("button", { name: "Mock tests", exact: true })
+    .click();
+  await expect(studentPage).toHaveURL(/mode=mock/);
+  await studentPage.screenshot({
+    path: "test-results/library-desktop.png",
+    fullPage: true,
+  });
+  await studentPage.setViewportSize({ width: 390, height: 844 });
+  await studentPage
+    .getByRole("button", { name: "Open navigation", exact: true })
+    .click();
+  await expect(
+    studentPage.getByRole("navigation", { name: "Main navigation" }),
+  ).toBeVisible();
+  await studentPage.keyboard.press("Escape");
+  await expect(
+    studentPage.getByRole("button", { name: "Open navigation", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await expect
+    .poll(() =>
+      studentPage
+        .locator(".sidebar")
+        .evaluate((el) => el.getBoundingClientRect().right),
+    )
+    .toBeLessThanOrEqual(0);
+  await studentPage.screenshot({
+    path: "test-results/library-mobile.png",
+    fullPage: true,
+  });
+  expect(
+    await studentPage.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await studentPage.setViewportSize({ width: 1280, height: 900 });
   await studentPage
     .getByRole("link")
     .filter({
@@ -281,22 +324,41 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     studentPage.getByText("No time limit", { exact: true }),
   ).toBeVisible();
   await expect(studentPage.getByRole("timer")).toHaveCount(0);
+  await expect(studentPage.locator("img, canvas, iframe, object")).toHaveCount(
+    0,
+  );
+  await expect(studentPage.locator(".sidebar, .global-search")).toHaveCount(0);
+  await expect(studentPage.locator(".exam-prompt")).toContainText(
+    "The books are",
+  );
   await expect(
-    studentPage.getByRole("img", {
-      name: "Question paper page 1",
-      exact: true,
-    }),
+    studentPage.getByLabel("Answer 1", { exact: true }),
   ).toBeVisible();
   await expect(
     studentPage.getByRole("button", { name: "Reveal Transcript", exact: true }),
   ).toHaveCount(0);
   await studentPage.getByLabel("Answer 1", { exact: true }).fill("upstairs");
   await studentPage
+    .getByRole("button", { name: "Go to question 2, unanswered", exact: true })
+    .click();
+  await expect(
+    studentPage.getByRole("radio", { name: "A. Upstairs", exact: true }),
+  ).toBeFocused();
+  await studentPage
+    .getByRole("button", { name: "Mark question 2 for review", exact: true })
+    .click();
+  await expect(
+    studentPage.getByRole("button", {
+      name: "Go to question 2, unanswered, marked for review",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await studentPage
     .getByRole("radio", { name: "A. Upstairs", exact: true })
     .check();
   await expect(studentPage.getByText("Saved", { exact: true })).toBeVisible();
   await studentPage
-    .getByRole("link", { name: "Mock Tests", exact: true })
+    .getByRole("link", { name: "Save & exit", exact: true })
     .click();
   await studentPage
     .getByRole("link")
@@ -307,6 +369,12 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     "upstairs",
   );
   await studentPage.reload();
+  await expect(
+    studentPage.getByRole("button", {
+      name: "Go to question 2, answered, marked for review",
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(studentPage.getByLabel("Answer 1", { exact: true })).toHaveValue(
     "upstairs",
   );
@@ -331,13 +399,18 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     fullPage: true,
   });
   await studentPage.setViewportSize({ width: 390, height: 844 });
-  await expect
-    .poll(() =>
-      studentPage
-        .locator(".sidebar")
-        .evaluate((el) => el.getBoundingClientRect().right),
-    )
-    .toBeLessThanOrEqual(0);
+  await expect(studentPage.locator(".sidebar")).toHaveCount(0);
+  await studentPage
+    .getByLabel("Answer 1", { exact: true })
+    .scrollIntoViewIfNeeded();
+  await studentPage.getByLabel("Answer 1", { exact: true }).click();
+  const answerBox = await studentPage
+    .getByLabel("Answer 1", { exact: true })
+    .boundingBox();
+  const navBox = await studentPage
+    .getByRole("navigation", { name: "Question navigation", exact: true })
+    .boundingBox();
+  expect(answerBox!.y + answerBox!.height).toBeLessThanOrEqual(navBox!.y);
   await studentPage.screenshot({
     path: "test-results/untimed-mock-mobile.png",
     fullPage: true,
@@ -533,4 +606,75 @@ test("audio only automatically becomes published Practice without manual transcr
     Math.ceil(sentences / 3),
   );
   await context.close();
+});
+
+test("forty text questions across four parts remain usable on desktop and mobile", async ({
+  page,
+}) => {
+  const material = fixture("create_text_mock").toString().trim();
+  await login(page, student);
+  await page.goto(`/library/${material}?mode=mock`);
+  await page.getByRole("radio", { name: /Mock · No time limit/ }).check();
+  await page.getByRole("button", { name: "Start Mock", exact: true }).click();
+  const nav = page.getByRole("navigation", {
+    name: "Question navigation",
+    exact: true,
+  });
+  await expect(nav.locator(".question-jump")).toHaveCount(40);
+  await expect(page.locator("img, canvas, iframe, object")).toHaveCount(0);
+  await page.getByLabel("Answer 1", { exact: true }).fill("upstairs");
+  const cell = page.getByLabel("Answer 6", { exact: true });
+  await expect(cell.locator("xpath=..")).toHaveJSProperty("tagName", "TD");
+  await cell.fill("upstairs");
+  await nav
+    .getByRole("button", { name: "Go to question 40, unanswered", exact: true })
+    .click();
+  await expect(page.getByLabel("Answer 40", { exact: true })).toBeFocused();
+  await page.getByLabel("Answer 40", { exact: true }).fill("upstairs");
+  await page
+    .getByRole("button", { name: "Mark question 40 for review", exact: true })
+    .click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: "test-results/full-mock-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await nav
+    .getByRole("button", { name: "Go to question 6, answered", exact: true })
+    .click();
+  await expect(page.getByLabel("Answer 6", { exact: true })).toBeFocused();
+  await page.getByLabel("Answer 6", { exact: true }).click();
+  const inputBox = await page
+    .getByLabel("Answer 6", { exact: true })
+    .boundingBox();
+  const navBox = await nav.boundingBox();
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(navBox!.y);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/full-mock-mobile.png",
+    fullPage: true,
+  });
+  await page.reload();
+  await expect(page.getByLabel("Answer 1", { exact: true })).toHaveValue(
+    "upstairs",
+  );
+  await expect(
+    nav.getByRole("button", {
+      name: "Go to question 40, answered, marked for review",
+      exact: true,
+    }),
+  ).toBeVisible();
+  page.on("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "Submit Mock", exact: true })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "8% correct", exact: true }),
+  ).toBeVisible();
 });

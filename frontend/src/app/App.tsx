@@ -74,6 +74,16 @@ function Shell() {
     setDrawer(false);
     setProfile(false);
   }, [location.pathname]);
+  useEffect(() => {
+    function close(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setDrawer(false);
+        setProfile(false);
+      }
+    }
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, []);
   async function logout() {
     await post("auth/logout/");
     useAuth.getState().clear();
@@ -83,12 +93,38 @@ function Shell() {
     e.preventDefault();
     navigate(`/library?search=${encodeURIComponent(search)}`);
   }
+  if (/^\/mock\/\d+\/?$/.test(location.pathname))
+    return (
+      <div className="exam-shell">
+        <a className="skip-link" href="#main-content">
+          Skip to questions
+        </a>
+        <header className="exam-topbar">
+          <Brand />
+          <span className="exam-candidate">
+            <Headphones size={17} />
+            Listening · {user.username}
+          </span>
+          <Link to="/mock-tests" className="exam-exit">
+            Save & exit
+          </Link>
+        </header>
+        <main id="main-content" className="exam-main">
+          <Outlet />
+        </main>
+      </div>
+    );
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <header className="topbar">
         <button
           className="icon-button mobile-menu"
           aria-label="Open navigation"
+          aria-expanded={drawer}
+          aria-controls="workspace-navigation"
           onClick={() => setDrawer(!drawer)}
         >
           <Menu />
@@ -141,7 +177,10 @@ function Shell() {
           onClick={() => setDrawer(false)}
         />
       )}
-      <aside className={`sidebar ${drawer ? "open" : ""}`}>
+      <aside
+        id="workspace-navigation"
+        className={`sidebar ${drawer ? "open" : ""}`}
+      >
         <div className="sidebar-label">YOUR WORKSPACE</div>
         <nav aria-label="Main navigation">
           {links.map(([to, label, Icon]) => (
@@ -185,7 +224,7 @@ function Shell() {
           <span>Your next step starts here.</span>
         </div>
       </aside>
-      <main className="main-content">
+      <main id="main-content" className="main-content">
         <Outlet />
         <footer className="footer">
           <span>© {new Date().getFullYear()} PracticeIELTS</span>

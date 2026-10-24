@@ -110,6 +110,104 @@ elif sys.argv[1] == "create_pdf":
         page[NameObject("/Contents")] = writer._add_object(stream)
     with open(os.environ["TEST_QUESTION_PDF"], "wb") as target:
         writer.write(target)
+elif sys.argv[1] == "create_text_mock":
+    # Explicitly authored original 40-question fixture for navigation/layout,
+    # separate from the upload/ASR acceptance tests.
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from django.utils import timezone
+
+    from exams.serializers import QuestionSetInput
+    from exams.services import save_question_set
+    from learning.services.audio import inspect_audio
+
+    owner = User.objects.get(username=teacher)
+    collection = Category.objects.create(
+        name="Full Mock " + teacher.removeprefix("teacher_")
+    )
+    material = Material.objects.create(
+        owner=owner,
+        category=collection,
+        title="Original four-part mock",
+        source="Original browser fixture",
+        license="CC0",
+        rights_confirmed=True,
+    )
+    upload = SimpleUploadedFile(
+        "original-speech.wav", Path(os.environ["TEST_RECORDING"]).read_bytes()
+    )
+    duration, mime = inspect_audio(upload)
+    audio = AudioAsset.objects.create(
+        material=material,
+        file=upload,
+        duration_ms=duration,
+        mime_type=mime,
+        size=upload.size,
+    )
+    version = TranscriptVersion.objects.create(
+        material=material, audio=audio, origin="manual", published_at=timezone.now()
+    )
+    Segment.objects.create(
+        version=version,
+        position=0,
+        text="Welcome to our library. The books are upstairs.",
+        start_ms=0,
+        end_ms=duration,
+    )
+    questions = []
+    kinds = [
+        "sentence_completion",
+        "multiple_choice",
+        "matching",
+        "form_completion",
+        "note_completion",
+        "table_completion",
+        "short_answer",
+        "map_label",
+        "diagram_label",
+    ]
+    for number in range(1, 41):
+        kind = kinds[(number - 1) % len(kinds)]
+        q = {
+            "number": number,
+            "part": (number - 1) // 10 + 1,
+            "type": kind,
+            "prompt": "The books are ____."
+            if kind != "table_completion"
+            else "Complete the location table.",
+            "instructions": "ONE WORD",
+            "options": [],
+            "answers": ["upstairs"],
+            "max_words": 1,
+            "context": {},
+        }
+        if kind in ("multiple_choice", "matching"):
+            q.update(
+                prompt="Choose the location of the books.",
+                instructions="Choose one answer.",
+                options=[
+                    {"key": "A", "text": "Upstairs"},
+                    {"key": "B", "text": "Downstairs"},
+                ],
+                answers=["A"],
+            )
+        if kind == "table_completion":
+            q["context"] = {"table": [["Item", "Location"], ["Books", "____"]]}
+        if kind in ("map_label", "diagram_label"):
+            q["context"] = {
+                "body": "The entrance opens into the ground-floor lobby. Stairs lead to the upper floor, where all books are kept."
+            }
+        questions.append(q)
+    serializer = QuestionSetInput(
+        data={"questions": questions, "presentation": "text", "duration_seconds": 1800}
+    )
+    serializer.is_valid(raise_exception=True)
+    qs = save_question_set(material, serializer.validated_data, owner)
+    qs.published_at = timezone.now()
+    qs.save(update_fields=["published_at"])
+    material.published_version = version
+    material.published_questions = qs
+    material.save(update_fields=["published_version", "published_questions"])
+    print(material.pk)
 elif sys.argv[1] == "cleanup":
     with transaction.atomic():
         users = User.objects.filter(username__in=[teacher, student])
@@ -140,6 +238,7 @@ elif sys.argv[1] == "cleanup":
             name__in=[
                 "Everyday English " + teacher.removeprefix("teacher_"),
                 "Auto Speech " + teacher.removeprefix("teacher_"),
+                "Full Mock " + teacher.removeprefix("teacher_"),
             ]
         ).delete()
         users.delete()

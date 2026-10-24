@@ -22,9 +22,9 @@ from learning.models import (
 pytestmark = pytest.mark.django_db
 
 
-def original_pdf(pages=2, encrypted=False):
+def original_pdf(pages=2, encrypted=False, texts=None):
     writer = PdfWriter()
-    for n in range(pages):
+    for n in range(len(texts) if texts is not None else pages):
         page = writer.add_blank_page(600, 800)
         font = DictionaryObject(
             {
@@ -46,7 +46,15 @@ def original_pdf(pages=2, encrypted=False):
             if n == 0
             else "Private answer key: 1. station"
         )
-        content.set_data(f"BT /F1 14 Tf 40 750 Td ({text}) Tj ET".encode())
+        if texts is not None:
+            text = texts[n]
+        commands = []
+        for line in text.splitlines():
+            escaped = line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+            commands.append(f"({escaped}) Tj T*")
+        content.set_data(
+            ("BT /F1 14 Tf 18 TL 40 750 Td " + " ".join(commands) + " ET").encode()
+        )
         page[NameObject("/Contents")] = writer._add_object(content)
     if encrypted:
         writer.encrypt("test-password")
@@ -79,6 +87,10 @@ def choice(kind="short_answer", number=1):
             ],
             answers=["A"],
         )
+    if kind in ("map_label", "diagram_label"):
+        q["context"] = {
+            "body": "Walk north from the entrance. The station is on the left, beside the park."
+        }
     if kind == "table_completion":
         q["context"] = {"table": [["Time", "Place"], ["9am", "____"]]}
     return q
@@ -309,7 +321,7 @@ def test_private_pdf_extraction_preview_and_only_selected_student_pages(exam_dat
     document = r.data["id"]
     page = client.get(f"/api/v1/question-documents/{document}/pages/1/")
     assert page.status_code == 200 and page.content.startswith(b"\x89PNG")
-    publish(exam_data, document=document, document_pages=[1])
+    publish(exam_data, document=document, document_pages=[1], presentation="legacy_pdf")
     a = start(exam_data)
     assert (
         client.get(f"/api/v1/question-documents/{document}/pages/1/").status_code == 403
@@ -359,7 +371,9 @@ def test_question_validation_and_ownership(exam_data):
     )
     assert (
         client.put(
-            path, {"questions": [choice("map_label")]}, format="json"
+            path,
+            {"questions": [choice("map_label")], "presentation": "legacy_pdf"},
+            format="json",
         ).status_code
         == 400
     )
@@ -401,3 +415,169 @@ def test_no_published_questions_means_no_mock(exam_data):
         ).status_code
         == 404
     )
+
+
+def test_text_mock_keeps_pdf_editor_only_and_rejects_placeholder_prompts(exam_data):
+    client, teacher, student, _, _, m, _ = exam_data
+    doc = client.post(
+        f"/api/v1/materials/{m.pk}/question-document/",
+        {"file": original_pdf()},
+        format="multipart",
+    ).data["id"]
+    qs = publish(exam_data, document=doc, document_pages=[1])
+    assert qs.presentation == "text"
+    attempt = start(exam_data)
+    assert attempt["document_pages"] == []
+    assert attempt["presentation"] == "text"
+    assert "Private answer key" not in str(attempt)
+    assert (
+        client.get(
+            f"/api/v1/mock-attempts/{attempt['id']}/document-pages/1/"
+        ).status_code
+        == 403
+    )
+    client.force_authenticate(teacher)
+    bad = choice()
+    bad["prompt"] = "Question 1 — answer using the question paper."
+    r = client.put(
+        f"/api/v1/materials/{m.pk}/questions/", {"questions": [bad]}, format="json"
+    )
+    assert r.status_code == 400 and "actual question text" in str(r.data)
+    # The rejected edit does not mutate the published set or the student's version.
+    assert list(qs.questions.values_list("prompt", flat=True)) == [choice()["prompt"]]
+
+
+def test_pdf_text_drafts_only_selected_pages_and_authorized_editor(exam_data):
+    client, teacher, student, other, editor, m, _ = exam_data
+    doc = client.post(
+        f"/api/v1/materials/{m.pk}/question-document/",
+        {"file": original_pdf()},
+        format="multipart",
+    ).data["id"]
+    path = f"/api/v1/materials/{m.pk}/question-drafts/"
+    r = client.post(path, {"document": doc, "pages": [1]}, format="json")
+    assert r.status_code == 200
+    assert "Private answer key" not in str(r.data)
+    assert r.data["questions"][0]["prompt"] == "The tour starts at the central ____."
+    assert r.data["questions"][0]["answers"] == []
+    assert r.data["warnings"]
+    for pages in [[], [3], [0], ["not-a-page"]]:
+        assert (
+            client.post(
+                path, {"document": doc, "pages": pages}, format="json"
+            ).status_code
+            == 400
+        )
+    assert (
+        client.post(
+            path, {"document": doc + 100, "pages": [1]}, format="json"
+        ).status_code
+        == 404
+    )
+    for user in (student, other, editor):
+        client.force_authenticate(user)
+        assert client.post(
+            path, {"document": doc, "pages": [1]}, format="json"
+        ).status_code in (403, 404)
+
+
+def test_text_diagrams_and_tables_cannot_rely_on_pdf(exam_data):
+    client, _, _, _, _, m, _ = exam_data
+    doc = client.post(
+        f"/api/v1/materials/{m.pk}/question-document/",
+        {"file": original_pdf()},
+        format="multipart",
+    ).data["id"]
+    for kind in ("map_label", "diagram_label", "table_completion"):
+        q = choice(kind)
+        q["context"] = {}
+        r = client.put(
+            f"/api/v1/materials/{m.pk}/questions/",
+            {"questions": [q], "document": doc, "document_pages": [1]},
+            format="json",
+        )
+        assert r.status_code == 400
+    assert (
+        client.put(
+            f"/api/v1/materials/{m.pk}/questions/",
+            {"questions": [choice("table_completion")]},
+            format="json",
+        ).status_code
+        == 201
+    )
+
+
+def test_mock_filter_excludes_dictation_only_materials(exam_data):
+    client, _, _, _, _, m, _ = exam_data
+    # Publish only a transcript first.
+    client.post(
+        f"/api/v1/materials/{m.pk}/publish/", {"confirm_review": True}, format="json"
+    )
+    assert client.get("/api/v1/materials/?mock_available=true").data["count"] == 0
+    publish(exam_data)
+    assert client.get("/api/v1/materials/?mock_available=true").data["count"] == 1
+
+
+def test_numbered_pdf_drafts_preserve_parts_options_and_skip_ambiguous_layout(
+    exam_data,
+):
+    client, _, _, _, _, m, _ = exam_data
+    pdf = original_pdf(
+        texts=[
+            "PART 1\nONE WORD\n1. The meeting is at the ____.\nPART 2\nCHOOSE ONE ANSWER\n2. Where is the entrance?\nA. North gate\nB. South gate",
+            "Private answer key: 1. station 2. A",
+        ]
+    )
+    doc = client.post(
+        f"/api/v1/materials/{m.pk}/question-document/",
+        {"file": pdf},
+        format="multipart",
+    ).data["id"]
+    response = client.post(
+        f"/api/v1/materials/{m.pk}/question-drafts/",
+        {"document": doc, "pages": [1]},
+        format="json",
+    )
+    assert response.status_code == 200
+    first, second = response.data["questions"]
+    assert first["part"] == 1 and first["instructions"] == "ONE WORD"
+    assert second["part"] == 2 and second["type"] == "multiple_choice"
+    assert second["options"] == [
+        {"key": "A", "text": "North gate"},
+        {"key": "B", "text": "South gate"},
+    ]
+    assert second["answers"] == [] and "Private answer key" not in str(response.data)
+    # A scan or non-numbered text is never replaced with fabricated questions.
+    doc = client.post(
+        f"/api/v1/materials/{m.pk}/question-document/",
+        {"file": original_pdf(texts=["Unnumbered question layout"])},
+        format="multipart",
+    ).data["id"]
+    response = client.post(
+        f"/api/v1/materials/{m.pk}/question-drafts/",
+        {"document": doc, "pages": [1]},
+        format="json",
+    )
+    assert response.data["questions"] == [] and response.data["warnings"]
+
+
+def test_new_attempt_cannot_start_with_legacy_pdf_placeholder_but_history_is_preserved(
+    exam_data,
+):
+    client, teacher, student, _, _, material, _ = exam_data
+    q = choice()
+    q["prompt"] = "Question 1 — answer using the question paper."
+    old = publish(exam_data, [q], presentation="legacy_pdf")
+    client.force_authenticate(student)
+    r = client.post(
+        "/api/v1/mock-attempts/",
+        {"material": material.pk, "timing": "untimed"},
+        format="json",
+    )
+    assert r.status_code == 400 and "updated text questions" in str(r.data)
+    assert not MockAttempt.objects.filter(material=material).exists()
+    client.force_authenticate(teacher)
+    publish(exam_data)
+    a = start(exam_data)
+    assert a["questions"][0]["prompt"] == choice()["prompt"]
+    assert old.questions.get().prompt == q["prompt"]

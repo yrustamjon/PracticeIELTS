@@ -20,8 +20,13 @@ from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from exams.intake import document_drafts
 from exams.models import QuestionDocument
-from exams.serializers import QuestionDocumentSerializer, QuestionSetInput
+from exams.serializers import (
+    QuestionDocumentSerializer,
+    QuestionDraftInput,
+    QuestionSetInput,
+)
 from exams.services import (
     active_material_ids,
     guard_study,
@@ -106,6 +111,8 @@ class MaterialViewSet(viewsets.ModelViewSet):
             q = q.filter(owner=self.request.user) | q.filter(
                 published_version__isnull=False
             )
+        if self.request.query_params.get("mock_available") == "true":
+            q = q.filter(published_questions__isnull=False)
         return q.distinct()
 
     def retrieve(self, request, *args, **kwargs):
@@ -165,6 +172,31 @@ class MaterialViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         qs = save_question_set(material, serializer.validated_data, request.user)
         return Response(question_set_data(qs), status=201)
+
+    @extend_schema(
+        request=inline_serializer(
+            name="QuestionDraftRequest",
+            fields={
+                "document": serializers.IntegerField(),
+                "pages": serializers.ListField(
+                    child=serializers.IntegerField(min_value=1, max_value=50),
+                    allow_empty=False,
+                    max_length=50,
+                ),
+            },
+        ),
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=True, methods=["post"], url_path="question-drafts")
+    def question_drafts(self, request, pk=None):
+        material = self.editor_material(request)
+        # Validate through a separate serializer so malformed page arrays never
+        # reach the PDF reader and another material's private PDF stays private.
+        serializer = QuestionDraftInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        document = get_object_or_404(material.question_documents, pk=data["document"])
+        return Response(document_drafts(document, data["pages"]))
 
     def perform_create(self, serializer):
         obj = serializer.save(owner=self.request.user)

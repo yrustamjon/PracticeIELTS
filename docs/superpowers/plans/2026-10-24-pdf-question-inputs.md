@@ -1,3 +1,5 @@
+> **Superseded (2026-10-24):** The user explicitly requested no images inside Mock. UX-01 implements interactive text, choices and tables instead. This document is retained only as historical context, not as the current implementation plan.
+
 # PDF Inline Inputs Implementation Plan (Pending)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

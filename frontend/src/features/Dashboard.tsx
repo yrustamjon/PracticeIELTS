@@ -87,6 +87,19 @@ export function Dashboard() {
           </span>
         }
       />
+      <div className="dashboard-intro">
+        <span>
+          <Headphones size={18} />
+          <strong>Listening workspace</strong>
+        </span>
+        <p>Choose a material, then practise your way.</p>
+        {user.can_edit && (
+          <Link className="text-link" to="/admin">
+            Manage materials
+            <ChevronRight size={16} />
+          </Link>
+        )}
+      </div>
       <div className="dashboard-top">
         <section className="panel continue-card">
           <SectionTitle
@@ -192,8 +205,8 @@ export function Dashboard() {
         <PracticeCard
           icon={<FileText />}
           title="Mock Test"
-          text="A place for full listening tests under real exam conditions."
-          link="View availability"
+          text="Answer interactive exam questions. Choose a timed test or take your time."
+          link="Choose a Mock Test"
           to="/mock-tests"
           color="orange"
         />

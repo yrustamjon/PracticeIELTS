@@ -32,6 +32,11 @@ class QuestionSet(models.Model):
         QuestionDocument, null=True, blank=True, on_delete=models.PROTECT
     )
     document_pages = models.JSONField(default=list)
+    presentation = models.CharField(
+        max_length=16,
+        choices=[("text", "Interactive text"), ("legacy_pdf", "Legacy PDF")],
+        default="text",
+    )
     duration_seconds = models.PositiveIntegerField(default=1800)
     published_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

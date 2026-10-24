@@ -19,7 +19,6 @@ import {
   post,
   type MockAttempt,
   type Material,
-  type ExamQuestion,
 } from "../services/api";
 import {
   Loading,
@@ -28,7 +27,7 @@ import {
   PageTitle,
   BookCover,
 } from "../components/ui";
-import { PrivateImage } from "../components/PrivateImage";
+import { QuestionControl, hasAnswer } from "../components/ExamQuestion";
 
 export function MockSelection({
   materialId,
@@ -400,7 +399,56 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
   const [part, setPart] = useState(
     Math.min(...initial.questions.map((q) => q.part)),
   );
-  const [page, setPage] = useState(initial.document_pages[0] || 1);
+  const [activeQuestion, setActiveQuestion] = useState<number | null>(null);
+  const [flags, setFlags] = useState<number[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(
+        sessionStorage.getItem(`mock-review-${initial.id}`) || "[]",
+      );
+      return Array.isArray(saved)
+        ? saved.filter((n): n is number => typeof n === "number")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        `mock-review-${initial.id}`,
+        JSON.stringify(flags),
+      );
+    } catch {
+      /* Flags remain usable if browser storage is unavailable. */
+    }
+  }, [flags, initial.id]);
+  useEffect(() => {
+    if (activeQuestion === null) return;
+    const target = document.getElementById(`exam-question-${activeQuestion}`);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    target
+      ?.querySelector<HTMLElement>("input, select")
+      ?.focus({ preventScroll: true });
+  }, [part, activeQuestion]);
+  function jump(number: number) {
+    const question = initial.questions.find((q) => q.number === number);
+    if (question) {
+      setPart(question.part);
+      setActiveQuestion(number);
+      if (question.part === part) {
+        const target = document.getElementById(`exam-question-${number}`);
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        target
+          ?.querySelector<HTMLElement>("input, select")
+          ?.focus({ preventScroll: true });
+      }
+    }
+  }
+  function toggleFlag(number: number) {
+    setFlags((old) =>
+      old.includes(number) ? old.filter((n) => n !== number) : [...old, number],
+    );
+  }
   const [save, setSave] = useState("Saved");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
@@ -560,14 +608,14 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
   const questions = initial.questions.filter((q) => q.part === part);
   const answered = initial.questions.filter((q) => {
     const value = answers[String(q.number)];
-    return Array.isArray(value) ? value.length > 0 : !!value?.trim();
+    return hasAnswer(value);
   }).length;
   return (
     <>
       <PageTitle
         eyebrow="LISTENING / MOCK"
         title={initial.title}
-        description="Focus on the recording and questions. Practice and the transcript unlock after submission."
+        description="Listening test · answer while you listen"
         action={
           <div className="exam-header-actions">
             {remaining === null ? (
@@ -601,7 +649,7 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
         <span>
           {remaining === null
             ? "Untimed mock — submit whenever you are ready."
-            : "Timed exam — the server enforces your deadline."}{" "}
+            : "Timed exam — your answers submit when time ends."}{" "}
           No transcript, hints or answer keys before submission.
         </span>
         <span className="save-status">{save}</span>
@@ -617,7 +665,10 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
           >
             Part {p}
             <small>
-              {initial.questions.filter((q) => q.part === p).length} questions
+              {initial.questions.filter((q) => q.part === p).length}{" "}
+              {initial.questions.filter((q) => q.part === p).length === 1
+                ? "question"
+                : "questions"}
             </small>
           </button>
         ))}
@@ -625,52 +676,15 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
           {answered} / {initial.total} answered
         </span>
       </div>
-      <div
-        className={`real-exam-grid ${initial.document_pages.length ? "with-pdf" : ""}`}
-      >
-        {initial.document_pages.length > 0 && (
-          <aside className="panel exam-paper">
-            <div className="pdf-controls">
-              <button
-                className="button secondary"
-                disabled={initial.document_pages.indexOf(page) === 0}
-                onClick={() =>
-                  setPage(
-                    initial.document_pages[
-                      initial.document_pages.indexOf(page) - 1
-                    ],
-                  )
-                }
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span>Question paper · page {page}</span>
-              <button
-                className="button secondary"
-                disabled={
-                  initial.document_pages.indexOf(page) ===
-                  initial.document_pages.length - 1
-                }
-                onClick={() =>
-                  setPage(
-                    initial.document_pages[
-                      initial.document_pages.indexOf(page) + 1
-                    ],
-                  )
-                }
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-            <PrivateImage
-              path={`mock-attempts/${initial.id}/document-pages/${page}/`}
-              alt={`Question paper page ${page}`}
-            />
-          </aside>
-        )}
+      <div className="real-exam-grid">
         <section className="panel exam-questions">
           <div className="workspace-heading">
-            <h2>Part {part}</h2>
+            <div>
+              <h2>Part {part}</h2>
+              <p className="muted">
+                Questions {questions[0]?.number}–{questions.at(-1)?.number}
+              </p>
+            </div>
             <span className="pill">
               {remaining === null ? "Untimed" : "Timed"}
             </span>
@@ -681,6 +695,8 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
               question={q}
               value={answers[String(q.number)] || ""}
               disabled={busy}
+              flagged={flags.includes(q.number)}
+              onFlag={() => toggleFlag(q.number)}
               onChange={(value) => answer(q.number, value)}
             />
           ))}
@@ -714,121 +730,52 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
           </div>
         </section>
       </div>
+      <nav className="exam-question-nav" aria-label="Question navigation">
+        <div className="question-nav-summary">
+          <strong>
+            {answered} of {initial.total} answered
+          </strong>
+          <span>
+            {flags.length} marked for review · {save}
+          </span>
+        </div>
+        <div className="question-nav-parts">
+          {parts.map((p) => (
+            <div className="question-nav-part" key={p}>
+              <button
+                className="question-nav-label"
+                onClick={() => setPart(p)}
+                aria-current={part === p ? "step" : undefined}
+              >
+                Part {p}
+              </button>
+              <div>
+                {initial.questions
+                  .filter((q) => q.part === p)
+                  .map((q) => {
+                    const done = hasAnswer(answers[String(q.number)]);
+                    const flagged = flags.includes(q.number);
+                    return (
+                      <button
+                        key={q.number}
+                        className={`question-jump ${done ? "answered" : ""} ${flagged ? "flagged" : ""}`}
+                        aria-label={`Go to question ${q.number}${done ? ", answered" : ", unanswered"}${flagged ? ", marked for review" : ""}`}
+                        aria-current={
+                          activeQuestion === q.number ? "true" : undefined
+                        }
+                        onClick={() => jump(q.number)}
+                      >
+                        {q.number}
+                        {flagged && <span aria-hidden="true">•</span>}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </nav>
     </>
-  );
-}
-
-function QuestionControl({
-  question: q,
-  value,
-  onChange,
-  disabled,
-}: {
-  question: ExamQuestion;
-  value: string | string[];
-  onChange: (value: string | string[]) => void;
-  disabled: boolean;
-}) {
-  const multiple = q.type === "multiple_choice" && (q.selections || 1) > 1;
-  const selected = Array.isArray(value) ? value : [];
-  return (
-    <article className="exam-question-control">
-      <div className="exam-question-number">{q.number}</div>
-      <div className="exam-question-body">
-        <span className="question-kind">{q.type.replaceAll("_", " ")}</span>
-        {q.instructions && (
-          <p className="exam-instructions">{q.instructions}</p>
-        )}
-        {typeof q.context.body === "string" && q.context.body && (
-          <p className="question-context">{q.context.body}</p>
-        )}
-        {Array.isArray(q.context.table) && (
-          <div className="question-table">
-            <table>
-              <tbody>
-                {(q.context.table as unknown[])
-                  .filter(Array.isArray)
-                  .map((row, i) => (
-                    <tr key={i}>
-                      {(row as unknown[]).map((cell, j) =>
-                        i === 0 ? (
-                          <th key={j}>{String(cell)}</th>
-                        ) : (
-                          <td key={j}>{String(cell)}</td>
-                        ),
-                      )}
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="exam-prompt" id={`question-${q.number}`}>
-          {q.prompt}
-        </p>
-        {q.type === "multiple_choice" ? (
-          <div className="exam-options">
-            {q.options.map((o) => (
-              <label key={o.key}>
-                <input
-                  type={multiple ? "checkbox" : "radio"}
-                  name={`question-${q.number}`}
-                  value={o.key}
-                  checked={
-                    multiple ? selected.includes(o.key) : value === o.key
-                  }
-                  disabled={
-                    disabled ||
-                    (multiple &&
-                      !selected.includes(o.key) &&
-                      selected.length >= (q.selections || 1))
-                  }
-                  onChange={(e) =>
-                    onChange(
-                      multiple
-                        ? e.target.checked
-                          ? [...selected, o.key]
-                          : selected.filter((v) => v !== o.key)
-                        : o.key,
-                    )
-                  }
-                />
-                <span>
-                  <strong>{o.key}.</strong> {o.text}
-                </span>
-              </label>
-            ))}
-          </div>
-        ) : q.type === "matching" ? (
-          <select
-            aria-label={`Answer ${q.number}`}
-            disabled={disabled}
-            value={typeof value === "string" ? value : ""}
-            onChange={(e) => onChange(e.target.value)}
-          >
-            <option value="">Select a match</option>
-            {q.options.map((o) => (
-              <option key={o.key} value={o.key}>
-                {o.key}. {o.text}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            type="text"
-            aria-label={`Answer ${q.number}`}
-            aria-describedby={`question-${q.number}`}
-            value={typeof value === "string" ? value : ""}
-            disabled={disabled}
-            maxLength={1000}
-            placeholder="Your answer"
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(e) => onChange(e.target.value)}
-          />
-        )}
-      </div>
-    </article>
   );
 }
 

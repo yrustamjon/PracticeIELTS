@@ -28,6 +28,10 @@ class QuestionInput(serializers.Serializer):
             raise serializers.ValidationError(
                 {"context": "Use a small context object."}
             )
+        if "body" in data["context"] and not isinstance(data["context"]["body"], str):
+            raise serializers.ValidationError(
+                {"context": "Student context must be plain text."}
+            )
         keys = [str(option["key"]).upper() for option in data["options"]]
         if len(keys) != len(set(keys)) or len(keys) > 20:
             raise serializers.ValidationError(
@@ -87,6 +91,9 @@ class QuestionInput(serializers.Serializer):
 
 
 class QuestionSetInput(serializers.Serializer):
+    presentation = serializers.ChoiceField(
+        choices=["text", "legacy_pdf"], default="text"
+    )
     questions = QuestionInput(many=True, allow_empty=False, max_length=100)
     document = serializers.IntegerField(required=False, allow_null=True)
     document_pages = serializers.ListField(
@@ -99,15 +106,33 @@ class QuestionSetInput(serializers.Serializer):
     )
 
     def validate(self, data):
-        if any(
-            q["type"] in ("map_label", "diagram_label") for q in data["questions"]
-        ) and not data.get("document"):
+        if (
+            any(q["type"] in ("map_label", "diagram_label") for q in data["questions"])
+            and not data.get("document")
+            and data["presentation"] == "legacy_pdf"
+        ):
             raise serializers.ValidationError(
                 {
                     "document": "Upload a PDF containing the map or diagram and select its question pages."
                 }
             )
         for q in data["questions"]:
+            if data["presentation"] == "text":
+                if "answer using the question paper" in q["prompt"].lower():
+                    raise serializers.ValidationError(
+                        {
+                            "questions": f"Question {q['number']}: replace the PDF placeholder with the actual question text."
+                        }
+                    )
+                if (
+                    q["type"] in ("map_label", "diagram_label")
+                    and not str(q["context"].get("body", "")).strip()
+                ):
+                    raise serializers.ValidationError(
+                        {
+                            "questions": f"Question {q['number']}: provide a complete text description; images are not shown in Mock."
+                        }
+                    )
             table = q["context"].get("table")
             if table is not None and (
                 not isinstance(table, list)
@@ -129,10 +154,10 @@ class QuestionSetInput(serializers.Serializer):
             if (
                 q["type"] == "table_completion"
                 and not table
-                and not data.get("document")
+                and (data["presentation"] == "text" or not data.get("document"))
             ):
                 raise serializers.ValidationError(
-                    {"context": "Provide the completion table, or a PDF showing it."}
+                    {"context": "Provide the completion table as text rows and cells."}
                 )
         return data
 
@@ -157,3 +182,12 @@ class QuestionDocumentSerializer(serializers.ModelSerializer):
             "extracted_text",
             "created_at",
         ]
+
+
+class QuestionDraftInput(serializers.Serializer):
+    document = serializers.IntegerField()
+    pages = serializers.ListField(
+        child=serializers.IntegerField(min_value=1, max_value=50),
+        allow_empty=False,
+        max_length=50,
+    )

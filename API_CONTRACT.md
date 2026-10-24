@@ -22,20 +22,22 @@ GET schema/ and docs/ → OpenAPI schema and documentation
 
 Students never see drafts; anonymous users never see private media; staff permissions enforced by API. Mock sessions will not use these unrestricted transcript endpoints.
 
-## Real workflow extension (implementation in progress)
+## Real workflow extension
 POST materials/<id>/audio/ multipart file + optional reference_text/reference_file automatically queues audio processing; returns audio plus job metadata. Reference files accept UTF-8 TXT or text-based PDF.
 POST materials/<id>/process/ {reference_text?,force?} schedules a new idempotent processing job for latest audio; an optional authoritative text can be supplied.
 GET materials/<id>/processing/ returns the latest authorized job status/stage/error/result version; never leaks another editor's private job.
 Successful processing stores word-timed immutable transcript versions; admin reviews then publishes once for both Practice and Mock.
 Easy playback groups may include word_count. Medium is exactly one sentence and hard at most three consecutive sentences; no word count is returned in medium/hard.
-Question/PDF/exam contracts will be specified before their dependent UI.
+Question/PDF/exam contracts follow below.
 
 ### Question/PDF/exam contract
 POST materials/<id>/question-document/ multipart file: private PDF, extracted text/status and teacher page-preview URLs. Text/answers are editor-only.
 GET materials/<id>/questions/ returns latest editable question version to authorized teachers.
-PUT materials/<id>/questions/ {questions:[{number,part,type,prompt,instructions,options:[{key,text}],answers:[string|array],max_words,context?}],document?,document_pages:[],duration_seconds} validates and stores a new question set. Published question sets are immutable.
+POST materials/<id>/question-drafts/ {document,pages:[1,...]} → editor-only {questions,source_text,warnings}. Only selected pages are read; simple numbered text/line-labelled options produce editable drafts. No answer keys or arbitrary PDF layout are inferred. Empty drafts require manual transcription. Ownership and page bounds are enforced.
+PUT materials/<id>/questions/ {presentation:"text"|"legacy_pdf" (default text),questions:[{number,part,type,prompt,instructions,options:[{key,text}],answers:[string|array],max_words,context?}],document?,document_pages:[],duration_seconds} validates and stores a new question set. Text sets require actual prompts, text tables and descriptions for map/diagram tasks; source document/page metadata is editor-only. Published question sets are immutable.
 POST materials/<id>/publish/ {confirm_review:true} publishes transcript and compatible latest question set together; a material without questions offers dictation only.
 POST mock-attempts/ {material,timing:"timed"|"untimed"} creates/resumes a pinned attempt. GET/PATCH mock-attempts/<id>/ loads/autosaves own answers; keys and transcripts are withheld before submission.
 POST mock-attempts/<id>/start-audio/ issues a single-use short-lived audio ticket. GET mock-attempts/<id>/audio/ with the X-Exam-Audio ticket header serves original exam audio; generic study media/transcript endpoints are blocked for that student's active material.
 POST mock-attempts/<id>/submit/ finalizes atomically and returns scored results/accepted answers. Timed expiry is enforced by the server; untimed has no deadline.
-GET mock-attempts/<id>/document-pages/<page>/ serves only question-PDF pages explicitly approved in the pinned question set. Full PDF and extracted text are not exposed to students.
+GET mock-attempts/<id>/document-pages/<page>/ is denied for text presentations. It remains limited to explicitly approved pages of pinned legacy_pdf attempts for historical API compatibility. The current student UI never renders PDF images, including for legacy sets. Full PDF/extracted text stay editor-only. Attempt responses include presentation; document_pages is empty for text sets.
+GET materials/?mock_available=true filters to materials with a published question set before pagination.
