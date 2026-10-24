@@ -328,3 +328,11 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Verification extension: Multi-page/column PDF entry and answer persistence; PDF→Save & exit→normal library sidebar/heading viewport regression. Existing backend permissions and approved-page restrictions remain in place.
 
 - Evidence (2026-10-24): 17 frontend tests, production build, all 6 browser workflows (55.7s), explicit 1280×720/1366×768 non-overlap/compact header/footer assertions, multi-page PDF stacked/column view and PDF-exit fixed/light sidebar regression passed. Screenshots reviewed; no production backend/schema changes.
+
+## Design review / DEMO-02 — Separate standalone HTML proposals
+- Status: Completed
+- Request: Deliver separate HTML demos for nested books/tests, Full/Part mode selection, modern segmented admin and paginated/scrollable Practice; deliver each as soon as ready.
+- Scope: Standalone review files under demo/review only. Existing frontend/backend behavior remains unchanged until the user agrees on the proposed flow/design. All sample content is explicitly demo data.
+- Verification: Each file opens directly without npm/backend; interaction/browser and mobile checks; ZIP integrity; deliver individual files as completed.
+
+- Evidence (2026-10-25): Five self-contained HTML proposals plus index/README delivered individually. Browser flows passed for nested navigation, mode selection, admin validation/full readiness, real embedded sample audio, Practice word alignment/paging/levels, and Mock persistence/scoring/timer expiry/exit. All six pages passed desktop and 390/360px overflow checks without external requests or JS errors. Inline syntax/local-link audit and seven-file ZIP integrity passed. Browser tests used localhost because managed Chromium blocks file URLs; files contain no external runtime dependencies.
