@@ -1,0 +1,7 @@
+# PracticeIELTS contributor instructions
+Read PROJECT_PLAN.md, TASKS.md, ARCHITECTURE.md, API_CONTRACT.md and docs/MASTER_PROMPT.md first. Use existing checkout; cloud tasks are isolated and do not need worktrees. Preserve user edits.
+Stack: Django/DRF/PostgreSQL, Celery/Redis/FFmpeg; React/TypeScript/Vite/Router/Query/Zustand/Tailwind. backend contains server, frontend contains browser app, infrastructure/docs contain operations guidance.
+Follow dependency order: mark task In Progress, implement backend/service/API/UI, test, record evidence, only then mark Completed. Never present fictional analytics, pretend uploads or AI results. Keep pending work honest and preserve next action in docs/STATUS.md.
+Use /api/v1, server authorization, validated serializers, database constraints and migrations. Do not mutate published transcript versions. Keep secrets in environment and media private. No copyrighted seed assets. Use accessible labels, keyboard navigation, responsive navy/teal reference design with PracticeIELTS branding.
+Checks: backend/.venv/bin/python backend/manage.py check; cd backend && .venv/bin/pytest; cd frontend && npm test -- --run && npm run build; browser suite: npm run test:e2e (requires services). See README for environment variables and startup.
+Definition of Done: connected persisted behavior, permission/error states, passing relevant tests and updated task/docs. Do not merge/deploy or force push. User permits pushes to main.
