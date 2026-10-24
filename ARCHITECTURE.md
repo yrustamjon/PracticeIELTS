@@ -1,13 +1,13 @@
 # Architecture
 React/TypeScript/Vite + Router + TanStack Query + Zustand + Tailwind frontend → /api/v1 → Django REST Framework → PostgreSQL. Redis brokers Celery; FFmpeg validates audio. Private local storage for development; S3-compatible storage configurable for deployment. Never expose object-store credentials. Browser uses same-origin Vite API proxy; JWT short-lived access tokens in memory, HttpOnly refresh cookie. Authorization enforced by DRF.
 
-Backend modules: accounts (custom user/role); learning (categories, material metadata, versioned transcripts, audio, sessions, responses, audit); services (audio validation and deterministic comparison); future processing/mock_tests/integrations stay separate. Frontend: app shell/routes, reusable UI, feature pages, API client/auth store. This initial bounded learning module can be split by domain as complexity increases.
+Backend modules: accounts (custom user/role); learning (categories, material metadata, versioned transcripts, audio, sessions, responses, audit); services (audio validation and deterministic comparison); processing owns speech jobs/ASR/alignment/segmentation; exams owns questions/PDFs/attempts/scoring; future integrations stay separate. Frontend: app shell/routes, reusable UI, feature pages, API client/auth store. This initial bounded learning module can be split by domain as complexity increases.
 
 Relationships: User → PracticeSession → immutable TranscriptVersion → TranscriptSegment. Material → Category (arbitrary self parent, cycles forbidden), AudioAsset and TranscriptVersion. StudentResponse references session/version and stores raw answer and comparison. Staff writes emit AuditLog. Published versions are immutable; edits produce a new version. LearningProgress derives from persisted checked responses rather than a second source of truth. MistakeRecord/notes, jobs and exams are later milestones.
 
 Audio stays original: segment windows in milliseconds, no per-sentence duplicate files. Validate file via ffprobe without shell interpolation; authenticated streamed Range delivery. Publish is gated on rights metadata, audio and validated non-overlapping segments. Exam playback must be a separate future restricted authorization path.
 
-Future entities: ProcessingJob, Question/QuestionOption/AnswerKey, MockTestAttempt, MistakeRecord and VocabularyNote. Full transcript/word alignment is async; low-confidence results require editor review.
+ProcessingJob, Question/QuestionOption/AnswerKey and MockAttempt are implemented by the extension below. MistakeRecord resolution, VocabularyNote and phoneme alignment are future work. Speech and word-anchor reference alignment run asynchronously; uncertain results require editor review.
 
 
 ## Real ingest and exam extension

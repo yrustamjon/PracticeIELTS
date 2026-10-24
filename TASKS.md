@@ -235,9 +235,11 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Milestone: M3 / revised workflow
 - Dependencies: M3-01,M3-02
 - Priority: Critical
-- Status: In Progress
+- Status: Completed
 - Subtasks / acceptance criteria: Async persisted jobs/status/retry; audio-only and reference modes; correct word-count visibility; simple connected admin upload/review UI. No fabricated timestamps or transcript.
 - Verification: Worker integration with original speech, reference/word segmentation tests, API permissions and browser upload→publish→practice.
+
+- Evidence: Real-model backend integration and strict audio-only browser test both passed without manual text/timestamps. All 50 backend / 3 frontend / 2 browser tests passed; setup/model preparation repeated successfully.
 
 ## Real workflow / R2 / REAL-02 — Questions and PDF intake
 - Description: Teacher-friendly real-exam question forms, private PDF upload and rendering, extract selectable PDF text for review. Scans or ambiguous PDFs must not fabricate question/answer extraction.

@@ -7,19 +7,20 @@ The same material now has normalized, versioned exam question sets: multiple cho
 
 The content studio now uploads audio + optional transcript, shows real job stages/errors, accepts typed questions or PDF, reviews generated segments, and publishes Mock + Practice together. No per-sentence timestamps are required in the normal workflow. Advanced manual recovery remains available. Root .env is loaded consistently by plain Django/Celery commands. Setup is portable to Mac cache/CA paths; Node 24.15+ and PyAV 15.1.0 compatibility are pinned.
 
-## Verification already completed
-- 49 non-model PostgreSQL backend tests passed, covering pipeline contracts, roles, reference gaps, idempotency, PDF extraction/rendering/page privacy, all question types, timed expiry, untimed persistence, media ownership/single-use tickets, hidden keys, legacy grouping and safety bounds.
-- A separate real base.en integration test passed: original synthesized speech → actual ASR → timestamped segments → Easy/Medium/Hard; optional authoritative reference retained; teacher review/publication → student Practice API. No fake provider in this test.
-- Actual original 49-second MP3 transcription ran with both tiny.en and base.en. Model artifact hashes were verified; base.en is the default, pinned to 3d3d5dee26484f91867d81cb899cfcf72b96be6c. The sample comparison was 93% normalized word accuracy; this is a single fixture, not a general accuracy guarantee. Teacher review is still required.
-- Strict OpenAPI validation, Django checks, migration drift check and Ruff passed during implementation. Frontend typecheck/production build and 3 Vitest tests passed.
-- One browser test passed for the real upload outcome, an explicitly authored manual transcript fixture, private PDF/MC question authoring, publication, Practice answer check/resume/refresh, untimed mock/no timer, exam audio and scoring, timed expiry, and mobile layout. This first run recorded the model-download error correctly; it did not claim that failed ASR succeeded.
-- Model network access was diagnosed and restored via the configuration draft (including the actual CDN us.aws.cdn.hf.co); supported HTTP downloading keeps TLS enabled. Real decoding exposed incompatible PyAV 19; pinning 15.1.0 fixed it. Public model access needs no HF token.
+## Final verification
+- **50 PostgreSQL backend tests passed** in one run with RUN_SPEECH_TESTS=1 and WHISPER_LOCAL_ONLY=true. This includes real base.en audio-only transcription, authoritative-reference preservation/alignment, automatic grouping and publication, plus pipeline failures/permissions, all question types, PDF extraction/rendering/page privacy, timed expiry, untimed persistence, version pinning, legacy grouping and bounded comparison.
+- **3 Vitest tests passed**; React TypeScript/production build passed.
+- **2 browser tests passed** with the real Django server, PostgreSQL, Redis and Celery worker:
+  1. Real upload processing succeeded; an explicitly authored manual transcript fixture then verifies private PDF/question creation, publication, dictation checking/resume/refresh, untimed no-timer flow, single-start audio, 100% scoring, timed expiry/50% score and responsive layout.
+  2. Strict audio-only upload with **no manual transcript, reference or timestamps** reaches real worker success; generated sentences appear, teacher reviews/publishes, student plays Easy and checks the actual recognized reference at 100%; Medium/Hard grouping and hidden word count are verified. No stub speech provider is used in this browser test.
+- Django checks, strict OpenAPI (--fail-on-warn), migration drift and Ruff passed. No failed/skipped tests in the final full backend run.
+- PREPARE_SPEECH_MODEL=1 bash infrastructure/setup.sh passed after setup already existed: frozen dependencies, project-local npm cache, PostgreSQL/Redis startup, migrations/checks, production build and pinned model preparation are repeatable.
+- Real original 49-second MP3 transcription ran with tiny.en and base.en. Weight content hashes were verified; base.en is default at revision 3d3d5dee26484f91867d81cb899cfcf72b96be6c. The sample comparison was 93% normalized word accuracy, a single fixture rather than a general guarantee; teacher review remains required.
+- Earlier model failures were diagnosed and fixed: Hub/CDN network requirements include the actual us.aws.cdn.hf.co host; the supported HTTPS downloader preserves TLS; PyAV 15.1.0 restores metadata_errors compatibility with the speech provider. No HF token or paid transcription key was needed.
+- Browser fixtures cleaned up their disposable accounts/materials/audio/PDFs. Screenshots are ignored under frontend/test-results. No production material or default accounts are seeded.
 
-## Immediate final checks still to finish at this checkpoint
-1. Restart backend and worker so the latest .env loader/model configuration is active.
-2. Run RUN_SPEECH_TESTS=1 backend/.venv/bin/pytest backend/tests -q as one final suite, strict schema/migration checks, frontend build/Vitest.
-3. Run the updated two-test Playwright suite. The second test strictly requires audio-only upload → successful real worker transcript → review/publish → student Easy/Medium/Hard, without a manual transcript fixture. Do not mark this flow verified before it passes.
-4. Exercise the updated reusable setup/start instructions and save the cloud configuration draft. Record final results and push a verification follow-up if needed.
+## Saved cloud configuration
+install_script now runs PREPARE_SPEECH_MODEL=1 bash infrastructure/setup.sh. start_skill records the real worker/model cache, three-service startup, current tests, existing-checkout guidance and product boundaries. Required Hub/CDN domains are saved in the network draft. Draft persistence is confirmed; publication/restoration in a new task is not claimed. Review/save the environment settings and publish through the product to preserve the prepared environment.
 
 ## Remaining product limitations
 - Reference alignment is recognized-word anchoring with explicit unknown timestamps and review flags, not a full phoneme forced aligner. Waveform split/merge/undo/redo remains future work.
@@ -29,4 +30,4 @@ The content studio now uploads audio + optional transcript, shows real job stage
 - No copyrighted IELTS assets, outside-site scraping, default passwords, deployment, or environment publication were performed. Source demo/ remains a separate local interface prototype.
 
 ## Continuation
-Read AGENTS.md, TASKS.md and this file. Finish the four final checks above, preserve historical versions, update task evidence, and push verified increments to main as authorized. Cloud settings saved in a draft are not proof of publication or restoration in a fresh task.
+The requested real upload-once → automatic Practice and typed/PDF timed/untimed Mock increment is implemented and verified. Read AGENTS.md and TASKS.md for follow-up work: M3-04 phoneme forced alignment, M3-03 waveform editing, M4 vocabulary/resolved mistakes/analytics and later optional integrations. Preserve historical transcript/question versions and user work. Push verified increments directly to main as authorized; no force pushes or deployment.
