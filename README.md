@@ -70,15 +70,21 @@ Optional reference text uses recognized-word anchors. Unmatched words keep unkno
 
 The supported Hub HTTPS downloader is used behind proxies with TLS verification intact. Required download hosts include `huggingface.co` and its actual model CDN `us.aws.cdn.hf.co`; cloud settings also retain the Hub/Xet download domains. `av==15.1.0` is pinned because newer PyAV removed an API used by the installed speech provider.
 
+## Screen fit and PDF page layout
+
+The exam uses smaller laptop-scale text/fields and a compact toolbar/footer. Its question area scrolls between the two panels rather than underneath them. The answered/Part/question-number strip stays small, and active Mock has no Question Review buttons or review counter. Ten short-answer rows fit the verified 1280×720 and 1366×768 layouts; longer papers scroll inside the question area.
+
+A part's approved PDF pages now appear in order under **Stacked**, with **Side by side** available on wide screens. Questions/tasks on separate pages remain in the same view. PDF text-layer styles are scoped to the PDF component so leaving a PDF Mock preserves the main app sidebar/layout. After pulling, refresh the browser to unload any older global viewer stylesheet. No migration or content re-import is needed for these changes.
+
 ## Existing text mocks use the compact paper automatically
 
-Previously saved text question sets and active attempts now use the same compact question-paper layout as the reference. Consecutive questions with matching instructions share a Questions range and one instruction paragraph. Stored prompts/context and inline fields are retained; repeated technical question-type labels and per-row toolbars are removed. Review controls are in a collapsible section. Timer/Submit controls sit in the top toolbar so the paper starts directly below it. No re-import, data migration, republishing or answer reset is needed for this presentation correction.
+Previously saved text question sets and active attempts now use the same compact question-paper layout as the reference. Consecutive questions with matching instructions share a Questions range and one instruction paragraph. Stored prompts/context and inline fields are retained; repeated technical question-type labels and per-row toolbars are removed. Question Review controls and the review counter are removed from active Mock. Timer/Submit controls sit in the top toolbar so the paper starts directly below it. No re-import, data migration, republishing or answer reset is needed for this presentation correction.
 
 This displays the content already saved in the question version. It does not reconstruct source headings or notes that a previous import never stored. Complete source-paper content still requires the formatted-section/PDF workflow below; no missing text is invented.
 
 ## Native HTML exam like the supplied reference
 
-The listening workspace now uses a compact white header/audio toolbar, a full question paper and bottom Part navigation. Notes, forms and tables retain their complete text with native answer fields embedded in place; radio/checkbox choices stay beside their option text. The current part expands its question numbers, while other parts show their actual question counts. Timed/untimed behavior, autosave, review flags and one-play audio restrictions remain enforced. Fullscreen is available from the exam toolbar; source controls that reveal keys/transcripts or unrestricted replay are not copied.
+The listening workspace now uses a compact white header/audio toolbar, a full question paper and bottom Part navigation. Notes, forms and tables retain their complete text with native answer fields embedded in place; radio/checkbox choices stay beside their option text. The current part expands its question numbers, while other parts show their actual question counts. Timed/untimed behavior, autosave and one-play audio restrictions remain enforced. Fullscreen is available from the exam toolbar; source controls that reveal keys/transcripts or unrestricted replay are not copied.
 
 In Content Studio, upload **HTML question paper**. The importer recognizes `id="part1"` … `id="part4"` sections and `data-question="1"` … `"40"` text inputs, radio/checkbox options and select controls, including the format of the user's reference. It creates editable sections and question drafts. Review all content and enter each answer key, then save and explicitly publish. Existing keys for matching question numbers are preserved rather than read from source scripts. In the formatted-paper editor, `{{1}}` marks an answer blank; `{{3:A}}` inserts one option control. Backend validation requires every question/option marker to match its part and option labels.
 

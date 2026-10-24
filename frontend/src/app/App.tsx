@@ -115,6 +115,7 @@ function Shell() {
         <main id="main-content" className="exam-main">
           <Outlet />
         </main>
+        <div id="exam-navigation-slot" />
       </div>
     );
   return (

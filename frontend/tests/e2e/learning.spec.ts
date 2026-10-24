@@ -360,18 +360,9 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
   await expect(
     studentPage.getByRole("radio", { name: "A. Upstairs", exact: true }),
   ).toBeFocused();
-  await studentPage
-    .getByText("Mark questions for review", { exact: true })
-    .click();
-  await studentPage
-    .getByRole("button", { name: "Mark question 2 for review", exact: true })
-    .click();
   await expect(
-    studentPage.getByRole("button", {
-      name: "Go to question 2, unanswered, marked for review",
-      exact: true,
-    }),
-  ).toBeVisible();
+    studentPage.locator(".review-toggle, .exam-review-tools"),
+  ).toHaveCount(0);
   await studentPage
     .getByRole("radio", { name: "A. Upstairs", exact: true })
     .check();
@@ -394,7 +385,7 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     .click();
   await expect(
     studentPage.getByRole("button", {
-      name: "Go to question 2, answered, marked for review",
+      name: "Go to question 2, answered",
       exact: true,
     }),
   ).toBeVisible();
@@ -659,10 +650,9 @@ test("forty text questions across four parts remain usable on desktop and mobile
     .click();
   await expect(page.getByLabel("Answer 40", { exact: true })).toBeFocused();
   await page.getByLabel("Answer 40", { exact: true }).fill("upstairs");
-  await page.getByText("Mark questions for review", { exact: true }).click();
-  await page
-    .getByRole("button", { name: "Mark question 40 for review", exact: true })
-    .click();
+  await expect(page.locator(".review-toggle, .exam-review-tools")).toHaveCount(
+    0,
+  );
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   await page.screenshot({
     path: "test-results/full-mock-desktop.png",
@@ -696,7 +686,7 @@ test("forty text questions across four parts remain usable on desktop and mobile
   await nav.getByRole("button", { name: "Part 4", exact: true }).click();
   await expect(
     nav.getByRole("button", {
-      name: "Go to question 40, answered, marked for review",
+      name: "Go to question 40, answered",
       exact: true,
     }),
   ).toBeVisible();
@@ -801,13 +791,13 @@ test("original two-page PDF keeps headings, notes and table with ten positioned 
   await learner
     .getByRole("button", { name: "Start Mock", exact: true })
     .click();
-  await expect(learner.locator(".textLayer")).toContainText(
-    "Registration details",
-  );
-  await expect(learner.locator(".textLayer")).toContainText(
-    "Please arrive ten minutes early.",
-  );
-  await expect(learner.locator(".pdf-answer")).toHaveCount(5);
+  await expect(
+    learner.locator('.pdf-interactive[data-page="1"] .textLayer'),
+  ).toContainText("Registration details");
+  await expect(
+    learner.locator('.pdf-interactive[data-page="1"] .textLayer'),
+  ).toContainText("Please arrive ten minutes early.");
+  await expect(learner.locator(".pdf-answer")).toHaveCount(10);
   await expect(learner.locator("img")).toHaveCount(0);
   const keys = [
     "Alex",
@@ -828,13 +818,15 @@ test("original two-page PDF keeps headings, notes and table with ten positioned 
     path: "test-results/original-pdf-student-page1.png",
     fullPage: true,
   });
-  await learner.getByRole("button", { name: "Next page", exact: true }).click();
-  await expect(learner.locator(".textLayer")).toContainText(
-    "Workshop schedule",
-  );
-  await expect(learner.locator(".textLayer")).toContainText(
-    "Bring your notebook and a pencil.",
-  );
+  await learner
+    .getByLabel("Answer 6", { exact: true })
+    .scrollIntoViewIfNeeded();
+  await expect(
+    learner.locator('.pdf-interactive[data-page="2"] .textLayer'),
+  ).toContainText("Workshop schedule");
+  await expect(
+    learner.locator('.pdf-interactive[data-page="2"] .textLayer'),
+  ).toContainText("Bring your notebook and a pencil.");
   for (let n = 6; n <= 10; n++)
     await learner.getByLabel(`Answer ${n}`, { exact: true }).fill(keys[n - 1]);
   await expect(learner.getByText("Saved", { exact: true })).toBeVisible();
@@ -848,6 +840,18 @@ test("original two-page PDF keeps headings, notes and table with ten positioned 
     path: "test-results/original-pdf-student-page2.png",
     fullPage: true,
   });
+  await expect(learner.locator(".pdf-interactive")).toHaveCount(2);
+  await learner
+    .getByRole("button", { name: "Side by side", exact: true })
+    .click();
+  const layout = await learner
+    .locator(".pdf-page-stack")
+    .evaluate(
+      (el) => getComputedStyle(el).gridTemplateColumns.split(" ").length,
+    );
+  expect(layout).toBe(2);
+  await learner.screenshot({ path: "test-results/mock-pdf-two-columns.png" });
+  await learner.getByRole("button", { name: "Stacked", exact: true }).click();
   await learner.setViewportSize({ width: 390, height: 844 });
   expect(
     await learner.evaluate(
@@ -855,13 +859,48 @@ test("original two-page PDF keeps headings, notes and table with ten positioned 
     ),
   ).toBe(true);
   await learner
+    .locator('.pdf-interactive[data-page="2"]')
     .getByRole("button", { name: "Zoom in question paper", exact: true })
     .click();
-  await expect(learner.locator(".pdf-zoom")).toContainText("120%");
+  await expect(
+    learner.locator('.pdf-interactive[data-page="2"] .pdf-zoom'),
+  ).toContainText("120%");
   await learner.screenshot({
     path: "test-results/original-pdf-mobile.png",
     fullPage: true,
   });
+  // Regression: loading the PDF then exiting must not restyle the app sidebar.
+  await learner.getByRole("link", { name: "Save & exit", exact: true }).click();
+  await learner.setViewportSize({ width: 1280, height: 720 });
+  await expect(
+    learner.getByRole("heading", {
+      name: "Bring your practice to exam day",
+      exact: true,
+    }),
+  ).toBeInViewport();
+  expect(
+    await learner
+      .locator(".sidebar")
+      .evaluate((el) => getComputedStyle(el).position),
+  ).toBe("fixed");
+  expect(
+    await learner
+      .locator(".sidebar")
+      .evaluate((el) => getComputedStyle(el).backgroundColor),
+  ).toBe("rgb(252, 253, 255)");
+  const headingBox = await learner
+    .getByRole("heading", {
+      name: "Bring your practice to exam day",
+      exact: true,
+    })
+    .boundingBox();
+  expect(headingBox!.y).toBeLessThan(200);
+  await learner.screenshot({ path: "test-results/after-pdf-exit.png" });
+  await learner
+    .getByRole("link")
+    .filter({ hasText: "Original four-part mock" })
+    .first()
+    .click();
   await learner.reload();
   await expect(learner.getByLabel("Answer 1", { exact: true })).toHaveValue(
     "Alex",
@@ -1023,7 +1062,9 @@ test("existing ten-question text attempt automatically uses one compact paper", 
     page.getByText("Write ONE WORD ONLY for each answer.", { exact: true }),
   ).toHaveCount(1);
   await expect(
-    page.locator(".question-kind, .question-tools, .exam-instructions"),
+    page.locator(
+      ".question-kind, .question-tools, .exam-instructions, .review-toggle, .exam-review-tools",
+    ),
   ).toHaveCount(0);
   await expect(
     page.locator(".reference-question-paper input[type=text]"),
@@ -1038,6 +1079,35 @@ test("existing ten-question text attempt automatically uses one compact paper", 
     .getByLabel("Answer 10", { exact: true })
     .boundingBox();
   expect(last!.y - first!.y).toBeLessThan(550);
+  for (const viewport of [
+    { width: 1366, height: 768 },
+    { width: 1280, height: 720 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.locator(".exam-main").evaluate((el) => {
+      el.scrollTop = 0;
+    });
+    const input = await page
+      .getByLabel("Answer 10", { exact: true })
+      .boundingBox();
+    const footer = await page
+      .getByRole("navigation", { name: "Question navigation", exact: true })
+      .boundingBox();
+    const header = await page.locator(".exam-topbar").boundingBox();
+    expect(input!.y + input!.height).toBeLessThanOrEqual(footer!.y);
+    expect(footer!.height).toBeLessThanOrEqual(50);
+    expect(header!.height).toBeLessThanOrEqual(60);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= innerWidth &&
+          document.documentElement.scrollHeight <= innerHeight,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `test-results/mock-fit-${viewport.width}.png`,
+    });
+  }
   await page.getByLabel("Answer 1", { exact: true }).fill("station");
   await page.getByLabel("Answer 10", { exact: true }).fill("station");
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();

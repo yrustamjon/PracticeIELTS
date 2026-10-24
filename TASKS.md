@@ -317,3 +317,14 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Verification: Grouping/accessible-description/context regression tests; browser fixture matching the reported ten-question text case, plus existing mixed text, HTML, PDF, ASR and mobile workflows.
 
 - Evidence (2026-10-24): 17 frontend tests, production typecheck/build, all 6 browser workflows passed (55.5 seconds), including the existing ten-question text attempt with one instruction, inline fields, compact vertical spacing, persisted answers and 20% scoring. Existing mixed text, HTML, original PDF and real audio-only processing flows still pass. Desktop/phone screenshots reviewed; Django check, Ruff on the fixture and diff checks passed. No production backend/schema changes.
+
+## Mock / UX-05 — Fit the exam to smaller laptop screens
+- Priority: High
+- Status: Completed
+- Request: The mock still appears too large and does not fit the user's screen.
+- Acceptance: Smaller readable type/fields/spacing; compact toolbar and navigation; dedicated scrolling question area bounded by header/footer; no controls covered by fixed panels; ten short questions fit typical 1280×720 and 1366×768 laptop viewports; preserve native HTML/PDF/text interaction, autosave and mobile behavior.
+- Verification: Browser viewport/geometry checks and screenshots at small laptop sizes, existing frontend suite/build and exam workflows.
+- Additional requested scope: Remove all Question … · Review controls and the review counter from active Mock; shrink answered/Part/question navigation. Show a part's approved PDF pages together in order, with stacked scrolling and an optional two-column view. Fix the reported broken library/sidebar after exiting PDF Mock by removing global PDF.js viewer CSS and scoping only its text-layer styling.
+- Verification extension: Multi-page/column PDF entry and answer persistence; PDF→Save & exit→normal library sidebar/heading viewport regression. Existing backend permissions and approved-page restrictions remain in place.
+
+- Evidence (2026-10-24): 17 frontend tests, production build, all 6 browser workflows (55.7s), explicit 1280×720/1366×768 non-overlap/compact header/footer assertions, multi-page PDF stacked/column view and PDF-exit fixed/light sidebar regression passed. Screenshots reviewed; no production backend/schema changes.

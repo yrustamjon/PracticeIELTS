@@ -6,7 +6,7 @@ import {
   type PDFDocumentProxy,
 } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import "pdfjs-dist/web/pdf_viewer.css";
+import "./pdfTextLayer.css";
 import { apiBlob, type ExamQuestion, type PdfField } from "../services/api";
 import { ErrorState } from "./ui";
 
@@ -21,6 +21,7 @@ export default function PdfQuestionPage({
   onPlace,
   selectedNumber,
   disabled = false,
+  lazy = false,
 }: {
   path: string;
   pageNumber: number;
@@ -30,10 +31,26 @@ export default function PdfQuestionPage({
   onPlace?: (number: number, field: PdfField) => void;
   selectedNumber?: number;
   disabled?: boolean;
+  lazy?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null),
     canvas = useRef<HTMLCanvasElement>(null),
     text = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(!lazy);
+  useEffect(() => {
+    if (!lazy || !host.current || visible) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "400px" },
+    );
+    observer.observe(host.current);
+    return () => observer.disconnect();
+  }, [lazy, visible]);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState<unknown>();
   const [ready, setReady] = useState(false);
@@ -51,6 +68,7 @@ export default function PdfQuestionPage({
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
+    if (!visible) return;
     let cancelled = false;
     let task: ReturnType<typeof getDocument> | undefined;
     setError(undefined);
@@ -78,7 +96,7 @@ export default function PdfQuestionPage({
       cancelled = true;
       void task?.destroy();
     };
-  }, [path]);
+  }, [path, visible]);
   useEffect(() => {
     if (!pdf || !canvas.current || !text.current) return;
     let cancelled = false;
@@ -109,6 +127,10 @@ export default function PdfQuestionPage({
         await rendering.promise;
         if (cancelled || !text.current) return;
         text.current.replaceChildren();
+        text.current.style.setProperty(
+          "--total-scale-factor",
+          String(viewport.scale * page.userUnit),
+        );
         layer = new TextLayer({
           textContentSource: await page.getTextContent(),
           container: text.current,
@@ -134,7 +156,7 @@ export default function PdfQuestionPage({
     };
   }
   return (
-    <div className="pdf-interactive" ref={host}>
+    <div className="pdf-interactive" data-page={pageNumber} ref={host}>
       <div className="pdf-zoom">
         <span>Original question paper · page {pageNumber}</span>
         <div>
