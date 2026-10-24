@@ -1,5 +1,16 @@
 # PracticeIELTS
 
+## Quick interface demo
+
+For the standalone HTML/CSS/JS review demo, open [demo/index.html](demo/index.html). On Mac, from the repository root:
+
+```bash
+open demo/index.html
+```
+
+No npm, Django or Docker setup is needed for this demo. It includes original audio, admin/student views, Mock → automatic Practice generation, and future Reading/Writing/Speaking placeholders. This is a local interface prototype: custom audio timing is approximate and no AI transcription or real authentication runs. Full instructions: [demo/README.txt](demo/README.txt).
+
+
 A listening-first IELTS learning platform: Django REST Framework, React/TypeScript and PostgreSQL. The interface follows the supplied dashboard reference: navy header, light sidebar, teal actions, restrained cards and responsive workspaces. All branding is PracticeIELTS.
 
 ## Current increment

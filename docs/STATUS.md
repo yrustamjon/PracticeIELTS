@@ -32,3 +32,8 @@ install_script runs infrastructure/setup.sh. start_skill records service startup
 
 ## Continuation
 Read AGENTS.md and TASKS.md. Start M3-01, mark it In Progress and verify before marking Completed. Do not replace the manual workflow with simulated AI output. Preserve transcript versions and student response history. Push coherent verified increments directly to main as authorized, without force pushes or deployment.
+
+## Standalone demo follow-up
+The user clarified that a mock should automatically produce easy (chunk/sentence with word count), medium (one full sentence, no word count), and hard (continuous multiple sentences, no word count) practice. Reading/Writing/Speaking are future modules in both admin and student views. A standalone interface demo is now in demo/ at the user's request; open demo/index.html. This previews the revised workflow and does not claim those changes are integrated into the Django/React application. Original sample timings are accurate; custom uploaded audio uses explicitly labeled approximate timing, not AI alignment.
+
+The source demo passed browser checks over local HTTP for role-specific UI, upload/publication/automatic grouping, three difficulty levels, real segment playback, comparison, autosave/resume/refresh, restricted mock playback and 8/8 scoring, transcript study, mobile layout, future-module placeholders and IndexedDB audio persistence. The project copy preserves those JavaScript/CSS/audio files exactly.

@@ -210,3 +210,12 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS â†
 - Status: Pending
 - Subtasks / acceptance criteria: Replaceable providers, assigned editors, audit monitoring and role management.
 - Verification: Provider contract and role boundary tests.
+
+## Demo / D1 / DEMO-01 â€” Standalone interface review
+- Description: Add the requested HTML/CSS/JS demo under demo/ so it can be pulled and opened locally.
+- Milestone: Interface review follow-up
+- Dependencies: Existing verified standalone demo
+- Priority: High
+- Status: Completed
+- Subtasks / acceptance criteria: Include original audio and all assets, document opening demo/index.html, preserve clear demo limitations and keep the main application behavior unchanged.
+- Verification: Copy integrity, JavaScript syntax check and complete asset references; original demo browser validation covers admin publication, three difficulties, audio, resume, mock scoring and mobile layout.
