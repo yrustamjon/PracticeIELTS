@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: practiceielts
+      POSTGRES_USER: practiceielts
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U practiceielts"]
+      interval: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 20
+  backend:
+    build:
+      context: ./backend
+      secrets: [build_ca]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://practiceielts:${POSTGRES_PASSWORD}@db:5432/practiceielts
+      REDIS_URL: redis://redis:6379/0
+    volumes: ["./backend:/app"]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    command: sh -c 'python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000'
+  worker:
+    build:
+      context: ./backend
+      secrets: [build_ca]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://practiceielts:${POSTGRES_PASSWORD}@db:5432/practiceielts
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A config worker --loglevel=info --concurrency=2
+    volumes: ["./backend:/app"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+volumes:
+  postgres-data:
+
+secrets:
+  build_ca:
+    file: ${BUILD_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}

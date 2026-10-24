@@ -12,3 +12,5 @@
 
 **/*.tsbuildinfo
 **/staticfiles/
+
+**/.ruff_cache/
