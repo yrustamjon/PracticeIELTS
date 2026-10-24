@@ -70,6 +70,12 @@ Optional reference text uses recognized-word anchors. Unmatched words keep unkno
 
 The supported Hub HTTPS downloader is used behind proxies with TLS verification intact. Required download hosts include `huggingface.co` and its actual model CDN `us.aws.cdn.hf.co`; cloud settings also retain the Hub/Xet download domains. `av==15.1.0` is pinned because newer PyAV removed an API used by the installed speech provider.
 
+## Existing text mocks use the compact paper automatically
+
+Previously saved text question sets and active attempts now use the same compact question-paper layout as the reference. Consecutive questions with matching instructions share a Questions range and one instruction paragraph. Stored prompts/context and inline fields are retained; repeated technical question-type labels and per-row toolbars are removed. Review controls are in a collapsible section. Timer/Submit controls sit in the top toolbar so the paper starts directly below it. No re-import, data migration, republishing or answer reset is needed for this presentation correction.
+
+This displays the content already saved in the question version. It does not reconstruct source headings or notes that a previous import never stored. Complete source-paper content still requires the formatted-section/PDF workflow below; no missing text is invented.
+
 ## Native HTML exam like the supplied reference
 
 The listening workspace now uses a compact white header/audio toolbar, a full question paper and bottom Part navigation. Notes, forms and tables retain their complete text with native answer fields embedded in place; radio/checkbox choices stay beside their option text. The current part expands its question numbers, while other parts show their actual question counts. Timed/untimed behavior, autosave, review flags and one-play audio restrictions remain enforced. Fullscreen is available from the exam toolbar; source controls that reveal keys/transcripts or unrestricted replay are not copied.

@@ -12,6 +12,9 @@ export function QuestionControl({
   disabled,
   flagged = false,
   onFlag,
+  compact = false,
+  instructionId,
+  showContext = true,
 }: {
   question: ExamQuestion;
   value: string | string[];
@@ -19,6 +22,9 @@ export function QuestionControl({
   disabled: boolean;
   flagged?: boolean;
   onFlag?: () => void;
+  compact?: boolean;
+  instructionId?: string;
+  showContext?: boolean;
 }) {
   const choice = q.type === "multiple_choice" || q.type === "matching";
   const multiple = q.type === "multiple_choice" && (q.selections || 1) > 1;
@@ -29,7 +35,7 @@ export function QuestionControl({
       className="exam-answer-input"
       type="text"
       aria-label={`Answer ${q.number}`}
-      aria-describedby={`question-instructions-${q.number}`}
+      aria-describedby={instructionId || `question-instructions-${q.number}`}
       value={typeof value === "string" ? value : ""}
       disabled={disabled}
       maxLength={1000}
@@ -74,40 +80,48 @@ export function QuestionControl({
       className={`exam-question-control ${flagged ? "marked-review" : ""}`}
       id={`exam-question-${q.number}`}
     >
-      <span
-        className="exam-question-number"
-        aria-label={`Question ${q.number}`}
-      >
-        {q.number}
-      </span>
-      <div className="exam-question-body">
-        <div className="question-tools">
-          <span className="question-kind">{q.type.replaceAll("_", " ")}</span>
-          {onFlag && (
-            <button
-              className="review-toggle"
-              aria-label={`Mark question ${q.number} for review`}
-              aria-pressed={flagged}
-              onClick={onFlag}
-            >
-              <Flag size={14} />
-              {flagged ? "Marked for review" : "Review"}
-            </button>
-          )}
-        </div>
-        <p
-          className="exam-instructions"
-          id={`question-instructions-${q.number}`}
+      {(!compact || choice) && (
+        <span
+          className="exam-question-number"
+          aria-label={`Question ${q.number}`}
         >
-          {q.instructions ||
-            (choice
-              ? "Choose your answer."
-              : `Write no more than ${q.max_words} words.`)}
-          {multiple && ` Select ${q.selections} answers.`}
-        </p>
-        {typeof q.context.body === "string" && q.context.body && (
-          <p className="question-context">{q.context.body}</p>
+          {q.number}
+        </span>
+      )}
+      <div className="exam-question-body">
+        {!compact && (
+          <div className="question-tools">
+            <span className="question-kind">{q.type.replaceAll("_", " ")}</span>
+            {onFlag && (
+              <button
+                className="review-toggle"
+                aria-label={`Mark question ${q.number} for review`}
+                aria-pressed={flagged}
+                onClick={onFlag}
+              >
+                <Flag size={14} />
+                {flagged ? "Marked for review" : "Review"}
+              </button>
+            )}
+          </div>
         )}
+        {!compact && (
+          <p
+            className="exam-instructions"
+            id={`question-instructions-${q.number}`}
+          >
+            {q.instructions ||
+              (choice
+                ? "Choose your answer."
+                : `Write no more than ${q.max_words} words.`)}
+            {multiple && ` Select ${q.selections} answers.`}
+          </p>
+        )}
+        {showContext &&
+          typeof q.context.body === "string" &&
+          q.context.body && (
+            <p className="question-context">{q.context.body}</p>
+          )}
         <div className="exam-prompt" id={`question-${q.number}`}>
           {prompt}
         </div>

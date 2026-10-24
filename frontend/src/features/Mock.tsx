@@ -30,7 +30,8 @@ import {
   PageTitle,
   BookCover,
 } from "../components/ui";
-import { QuestionControl, hasAnswer } from "../components/ExamQuestion";
+import { hasAnswer } from "../components/ExamQuestion";
+import { QuestionPaper } from "../components/QuestionPaper";
 
 const PdfQuestionPage = lazy(() => import("../components/PdfQuestionPage"));
 
@@ -417,7 +418,11 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
   const cache = useQueryClient();
   const [answers, setAnswers] = useState(initial.answers);
   const [audioSlot, setAudioSlot] = useState<HTMLElement | null>(null);
-  useEffect(() => setAudioSlot(document.getElementById("exam-audio-slot")), []);
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setAudioSlot(document.getElementById("exam-audio-slot"));
+    setToolbarSlot(document.getElementById("exam-controls-slot"));
+  }, []);
   const [part, setPart] = useState(
     Math.min(...initial.questions.map((q) => q.part)),
   );
@@ -641,63 +646,52 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
     const value = answers[String(q.number)];
     return hasAnswer(value);
   }).length;
+  const headerControls = (
+    <div className="exam-header-actions">
+      <button
+        className="button secondary exam-fullscreen"
+        aria-label="Toggle exam fullscreen"
+        onClick={() => {
+          if (document.fullscreenElement) void document.exitFullscreen();
+          else
+            void document
+              .querySelector<HTMLElement>(".exam-shell")
+              ?.requestFullscreen();
+        }}
+      >
+        ⛶
+      </button>
+      {remaining === null ? (
+        <span className="difficulty-badge">
+          <Clock size={16} />
+          No time limit
+        </span>
+      ) : (
+        <span
+          className={`exam-countdown ${remaining < 60000 ? "urgent" : ""}`}
+          role="timer"
+        >
+          <Clock size={18} />
+          {Math.floor(remaining / 60000)}:
+          {String(Math.floor(remaining / 1000) % 60).padStart(2, "0")}
+        </span>
+      )}
+      <button
+        className="button primary"
+        disabled={busy}
+        onClick={() => void submit()}
+      >
+        <Check size={17} />
+        {busy ? "Submitting…" : "Submit Mock"}
+      </button>
+    </div>
+  );
   return (
     <>
-      <PageTitle
-        eyebrow="LISTENING / MOCK"
-        title={initial.title}
-        description="Listening test · answer while you listen"
-        action={
-          <div className="exam-header-actions">
-            <button
-              className="button secondary exam-fullscreen"
-              aria-label="Toggle exam fullscreen"
-              onClick={() => {
-                if (document.fullscreenElement) void document.exitFullscreen();
-                else
-                  void document
-                    .querySelector<HTMLElement>(".exam-shell")
-                    ?.requestFullscreen();
-              }}
-            >
-              ⛶
-            </button>
-            {remaining === null ? (
-              <span className="difficulty-badge">
-                <Clock size={16} />
-                No time limit
-              </span>
-            ) : (
-              <span
-                className={`exam-countdown ${remaining < 60000 ? "urgent" : ""}`}
-                role="timer"
-              >
-                <Clock size={18} />
-                {Math.floor(remaining / 60000)}:
-                {String(Math.floor(remaining / 1000) % 60).padStart(2, "0")}
-              </span>
-            )}
-            <button
-              className="button primary"
-              disabled={busy}
-              onClick={() => void submit()}
-            >
-              <Check size={17} />
-              {busy ? "Submitting…" : "Submit Mock"}
-            </button>
-          </div>
-        }
-      />
-      <div className="exam-rules">
-        <ShieldCheck size={18} />
-        <span>
-          {remaining === null
-            ? "Untimed mock — submit whenever you are ready."
-            : "Timed exam — your answers submit when time ends."}{" "}
-          No transcript, hints or answer keys before submission.
-        </span>
-        <span className="save-status">{save}</span>
+      <div className="sr-only">
+        <h1>{initial.title}</h1>
       </div>
+      {toolbarSlot ? createPortal(headerControls, toolbarSlot) : headerControls}
       {error != null && <ErrorState error={error} />}
       {audioSlot ? (
         createPortal(
@@ -818,34 +812,33 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
             </div>
           ) : (
             <>
-              {questions.map((q) => (
-                <QuestionControl
-                  key={q.number}
-                  question={q}
-                  value={answers[String(q.number)] || ""}
-                  disabled={busy}
-                  flagged={flags.includes(q.number)}
-                  onFlag={() => toggleFlag(q.number)}
-                  onChange={(value) => answer(q.number, value)}
-                />
-              ))}
+              <QuestionPaper
+                questions={questions}
+                answers={answers}
+                disabled={busy}
+                flags={flags}
+                onAnswer={answer}
+              />
             </>
           )}
-          {initial.presentation === "html" && (
-            <div className="pdf-review-flags">
-              {questions.map((q) => (
-                <button
-                  key={q.number}
-                  className="review-toggle"
-                  aria-label={`Mark question ${q.number} for review`}
-                  aria-pressed={flags.includes(q.number)}
-                  onClick={() => toggleFlag(q.number)}
-                >
-                  Question {q.number} ·{" "}
-                  {flags.includes(q.number) ? "Marked for review" : "Review"}
-                </button>
-              ))}
-            </div>
+          {initial.presentation !== "pdf" && (
+            <details className="exam-review-tools">
+              <summary>Mark questions for review</summary>
+              <div className="pdf-review-flags">
+                {questions.map((q) => (
+                  <button
+                    key={q.number}
+                    className="review-toggle"
+                    aria-label={`Mark question ${q.number} for review`}
+                    aria-pressed={flags.includes(q.number)}
+                    onClick={() => toggleFlag(q.number)}
+                  >
+                    Question {q.number} ·{" "}
+                    {flags.includes(q.number) ? "Marked for review" : "Review"}
+                  </button>
+                ))}
+              </div>
+            </details>
           )}
           <div className="workspace-navigation">
             <button
@@ -883,7 +876,8 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
             {answered} of {initial.total} answered
           </strong>
           <span>
-            {flags.length} marked for review · {save}
+            {flags.length} marked for review ·{" "}
+            <span className="save-status">{save}</span>
           </span>
         </div>
         <div className="question-nav-parts">

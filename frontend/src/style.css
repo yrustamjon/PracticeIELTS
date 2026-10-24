@@ -5120,3 +5120,183 @@ html {
     width: 100%;
   }
 }
+
+/* Existing text attempts use the same compact paper as the HTML reference. */
+.reference-question-paper {
+  font-family: Arial, sans-serif;
+  color: #252525;
+  max-width: 1160px;
+  padding-bottom: 16px;
+}
+.reference-question-group {
+  margin: 0 0 24px;
+}
+.reference-question-group > h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: #252525;
+}
+.paper-shared-instructions {
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+  color: #252525;
+}
+.paper-shared-context {
+  font-size: 16px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  margin: 0 0 14px;
+}
+.exam-main .reference-question-paper .exam-question-control {
+  padding: 5px 0;
+  gap: 10px;
+  border: 0;
+  margin: 0;
+}
+.exam-main .reference-question-paper .exam-prompt {
+  line-height: 1.9;
+  font-size: 16px;
+}
+.exam-main .reference-question-paper .exam-answer-input {
+  height: 30px;
+  padding: 3px 7px;
+  width: 180px;
+  margin: 0 4px;
+  border-color: #999;
+  border-radius: 3px;
+  font-size: 16px;
+  background: #fff;
+}
+.exam-main .reference-question-paper .standalone-answer {
+  display: inline-block;
+  margin-top: 4px;
+}
+.exam-main .reference-question-paper .exam-question-control.marked-review {
+  border-left: 2px solid #c59748;
+  padding-left: 8px;
+}
+.exam-main .reference-question-paper .question-context {
+  margin: 0 0 8px;
+}
+.exam-main .reference-question-paper .exam-options {
+  margin-top: 8px;
+  gap: 0;
+}
+.exam-main .reference-question-paper .question-table {
+  margin: 10px 0;
+}
+.exam-main .reference-question-paper .exam-question-number {
+  margin-top: 2px;
+}
+@media (max-width: 700px) {
+  .reference-question-paper {
+    max-width: 100%;
+  }
+  .paper-shared-instructions,
+  .paper-shared-context {
+    font-size: 15px;
+  }
+  .exam-main .reference-question-paper .exam-question-control {
+    padding: 7px 0;
+  }
+  .exam-main .reference-question-paper .exam-answer-input {
+    max-width: 100%;
+    width: 150px;
+  }
+}
+
+/* Keep test controls in the toolbar so the paper starts directly below it. */
+#exam-controls-slot {
+  flex-shrink: 0;
+}
+#exam-controls-slot .exam-header-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+#exam-controls-slot .button {
+  min-height: 32px;
+  padding: 7px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+#exam-controls-slot .difficulty-badge {
+  padding: 7px 9px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+#exam-controls-slot .exam-countdown {
+  font-size: 17px;
+}
+.exam-review-tools {
+  margin: 12px 0;
+  color: #657487;
+  font-size: 12px;
+}
+.exam-review-tools > summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+@media (min-width: 1051px) {
+  #exam-audio-slot {
+    max-width: 640px;
+  }
+  .exam-topbar .exam-candidate {
+    max-width: 110px;
+  }
+}
+@media (max-width: 1050px) {
+  #exam-controls-slot .exam-fullscreen {
+    display: none;
+  }
+  .exam-topbar {
+    gap: 8px;
+  }
+}
+@media (max-width: 700px) {
+  .exam-topbar {
+    min-height: 106px;
+  }
+  #exam-controls-slot {
+    margin-left: auto;
+  }
+  #exam-controls-slot .button {
+    font-size: 10px;
+    padding: 6px 8px;
+  }
+  #exam-controls-slot .difficulty-badge {
+    font-size: 10px;
+    padding: 6px;
+  }
+  #exam-controls-slot .difficulty-badge svg {
+    display: none;
+  }
+  .exam-topbar .exam-exit {
+    margin-left: 0;
+    padding: 6px;
+    font-size: 10px;
+  }
+  .exam-topbar .brand {
+    font-size: 14px;
+  }
+  .exam-topbar .brand svg {
+    width: 20px;
+  }
+}
+.exam-topbar .exam-exit > svg {
+  display: none;
+}
+.exam-main .workspace-heading > .pill {
+  display: none;
+}
+@media (max-width: 700px) {
+  .exam-topbar .exam-exit-label {
+    display: none;
+  }
+  .exam-topbar .exam-exit > svg {
+    display: block;
+  }
+}

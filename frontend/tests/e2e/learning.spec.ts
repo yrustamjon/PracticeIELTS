@@ -361,6 +361,9 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     studentPage.getByRole("radio", { name: "A. Upstairs", exact: true }),
   ).toBeFocused();
   await studentPage
+    .getByText("Mark questions for review", { exact: true })
+    .click();
+  await studentPage
     .getByRole("button", { name: "Mark question 2 for review", exact: true })
     .click();
   await expect(
@@ -656,6 +659,7 @@ test("forty text questions across four parts remain usable on desktop and mobile
     .click();
   await expect(page.getByLabel("Answer 40", { exact: true })).toBeFocused();
   await page.getByLabel("Answer 40", { exact: true }).fill("upstairs");
+  await page.getByText("Mark questions for review", { exact: true }).click();
   await page
     .getByRole("button", { name: "Mark question 40 for review", exact: true })
     .click();
@@ -888,13 +892,11 @@ test("reference-style native HTML keeps notes, choices and tables interactive", 
   await page.goto(`/admin/${material}`);
   const html = `<html><body><header>Promotion never imported</header><div id="part1"><p><strong>Questions 1–2</strong></p><p>Complete the notes. Write ONE WORD for each answer.</p><div class="gx-notes"><p class="gx-notes-title">Library visit</p><p class="gx-sec-title">Booking details</p><ul><li>Meeting point: <input type="text" data-question="1"> before nine.</li><li>Collect your books <input type="text" data-question="2"> at the counter.</li></ul></div><script>window.stolenAnswers = 'do not import';</script></div><div id="part2"><p><strong>Questions 3–4</strong></p><p>Choose the correct room, then complete the table.</p><label><input type="radio" data-question="3" value="A"> A Upstairs</label><label><input type="radio" data-question="3" value="B"> B Downstairs</label><table><tr><th>Item</th><th>Place</th></tr><tr><td>Books</td><td><input type="text" data-question="4"></td></tr></table></div></body></html>`;
   page.once("dialog", (dialog) => dialog.accept());
-  await page
-    .getByLabel("HTML question paper", { exact: true })
-    .setInputFiles({
-      name: "native-paper.html",
-      mimeType: "text/html",
-      buffer: Buffer.from(html),
-    });
+  await page.getByLabel("HTML question paper", { exact: true }).setInputFiles({
+    name: "native-paper.html",
+    mimeType: "text/html",
+    buffer: Buffer.from(html),
+  });
   await expect(
     page
       .locator(".native-paper-editor")
@@ -1003,4 +1005,66 @@ test("reference-style native HTML keeps notes, choices and tables interactive", 
     learner.getByRole("heading", { name: "100% correct", exact: true }),
   ).toBeVisible();
   await context.close();
+});
+
+test("existing ten-question text attempt automatically uses one compact paper", async ({
+  page,
+}) => {
+  const material = fixture("create_compact_mock").toString().trim();
+  await login(page, student);
+  await page.goto(`/library/${material}?mode=mock`);
+  await page.getByRole("radio", { name: /Mock · No time limit/ }).check();
+  await page.getByRole("button", { name: "Start Mock", exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(
+    page.getByRole("heading", { name: "Questions 1–10", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Write ONE WORD ONLY for each answer.", { exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.locator(".question-kind, .question-tools, .exam-instructions"),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".reference-question-paper input[type=text]"),
+  ).toHaveCount(10);
+  await expect(
+    page.getByLabel("Answer 1", { exact: true }),
+  ).toHaveAccessibleDescription("Write ONE WORD ONLY for each answer.");
+  const first = await page
+    .getByLabel("Answer 1", { exact: true })
+    .boundingBox();
+  const last = await page
+    .getByLabel("Answer 10", { exact: true })
+    .boundingBox();
+  expect(last!.y - first!.y).toBeLessThan(550);
+  await page.getByLabel("Answer 1", { exact: true }).fill("station");
+  await page.getByLabel("Answer 10", { exact: true }).fill("station");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: "test-results/existing-text-compact-desktop.png",
+    fullPage: true,
+  });
+  await page.reload();
+  await expect(page.getByLabel("Answer 10", { exact: true })).toHaveValue(
+    "station",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/existing-text-compact-mobile.png",
+    fullPage: true,
+  });
+  page.on("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("button", { name: "Submit Mock", exact: true })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "20% correct", exact: true }),
+  ).toBeVisible();
 });

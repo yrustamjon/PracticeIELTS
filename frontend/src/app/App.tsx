@@ -106,8 +106,10 @@ function Shell() {
             Listening · {user.username}
           </span>
           <div id="exam-audio-slot" />
-          <Link to="/mock-tests" className="exam-exit">
-            Save & exit
+          <div id="exam-controls-slot" />
+          <Link to="/mock-tests" className="exam-exit" aria-label="Save & exit">
+            <span className="exam-exit-label">Save & exit</span>
+            <LogOut size={16} aria-hidden="true" />
           </Link>
         </header>
         <main id="main-content" className="exam-main">

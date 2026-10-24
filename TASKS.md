@@ -308,3 +308,12 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Verification: Template/import security and version tests; native controls unit tests; live native notes/radio/table author→publish→resume/score/browser/mobile flow; existing suites/build.
 
 - Evidence (2026-10-24): Uploaded reference parsed to 4 parts/40 controls without executing source scripts or importing remote media. 59 backend tests, 14 frontend tests, production build, 5 browser flows (including native notes/radios/table import and phone resume/scoring), strict OpenAPI, Django check, migration drift, Ruff and diff checks passed. Desktop/phone native screenshots reviewed; committed test papers are original fixtures.
+
+## Mock / UX-04 — Apply the reference paper layout to existing text attempts
+- Priority: Critical
+- Status: Completed
+- User evidence: screenshot /mock/7 still shows individual SHORT ANSWER labels, repeated identical instructions, per-row Review tools and large gaps. UX-03 only covered imported HTML; existing text papers must also use the compact reference layout automatically.
+- Acceptance: Group consecutive questions under one range/instruction; retain every stored prompt/context and working field; remove technical question-kind labels and per-question instruction duplication; compact native rows; keep navigation, review flags, saved answers and version pins; no re-import or database rewrite needed to change existing text presentation.
+- Verification: Grouping/accessible-description/context regression tests; browser fixture matching the reported ten-question text case, plus existing mixed text, HTML, PDF, ASR and mobile workflows.
+
+- Evidence (2026-10-24): 17 frontend tests, production typecheck/build, all 6 browser workflows passed (55.5 seconds), including the existing ten-question text attempt with one instruction, inline fields, compact vertical spacing, persisted answers and 20% scoring. Existing mixed text, HTML, original PDF and real audio-only processing flows still pass. Desktop/phone screenshots reviewed; Django check, Ruff on the fixture and diff checks passed. No production backend/schema changes.

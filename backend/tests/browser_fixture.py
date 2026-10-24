@@ -182,7 +182,7 @@ elif sys.argv[1] == "create_layout_pdf":
         page[NameObject("/Contents")] = writer._add_object(stream)
     with open(os.environ["TEST_QUESTION_PDF"], "wb") as target:
         writer.write(target)
-elif sys.argv[1] == "create_text_mock":
+elif sys.argv[1] in ("create_text_mock", "create_compact_mock"):
     # Explicitly authored original 40-question fixture for navigation/layout,
     # separate from the upload/ASR acceptance tests.
     from django.core.files.uploadedfile import SimpleUploadedFile
@@ -237,8 +237,9 @@ elif sys.argv[1] == "create_text_mock":
         "map_label",
         "diagram_label",
     ]
-    for number in range(1, 41):
-        kind = kinds[(number - 1) % len(kinds)]
+    compact = sys.argv[1] == "create_compact_mock"
+    for number in range(1, 11 if compact else 41):
+        kind = "short_answer" if compact else kinds[(number - 1) % len(kinds)]
         q = {
             "number": number,
             "part": (number - 1) // 10 + 1,
@@ -252,6 +253,24 @@ elif sys.argv[1] == "create_text_mock":
             "max_words": 1,
             "context": {},
         }
+        if compact:
+            prompts = [
+                "Address: 18, ____ Street",
+                "Heard about the workshop from: ____",
+                "- Morning session: outdoor ____",
+                "- Afternoon session: stay near the ____",
+                "Meeting location: ____",
+                "Bring a ____",
+                "Travel by ____",
+                "Booking contact: ____",
+                "Group leader: ____",
+                "Final destination: ____",
+            ]
+            q.update(
+                prompt=prompts[number - 1],
+                instructions="Write ONE WORD ONLY for each answer.",
+                answers=["station"],
+            )
         if kind in ("multiple_choice", "matching"):
             q.update(
                 prompt="Choose the location of the books.",
