@@ -164,6 +164,23 @@ def start(data, timing="untimed"):
     return response.data
 
 
+def test_material_exposes_only_published_part_question_counts(exam_data):
+    client, teacher, student, _, _, material, _ = exam_data
+    first = choice(number=1)
+    third = {**choice(number=2), "part": 3}
+    publish(exam_data, [first, third])
+    draft = {**choice(number=1), "part": 2}
+    assert client.put(
+        f"/api/v1/materials/{material.pk}/questions/",
+        {"questions": [draft], "duration_seconds": 60},
+        format="json",
+    ).status_code == 201
+    client.force_authenticate(student)
+    response = client.get(f"/api/v1/materials/{material.pk}/")
+    assert response.status_code == 200
+    assert response.data["part_question_counts"] == {"1": 1, "3": 1}
+
+
 @pytest.mark.parametrize(
     "kind",
     [

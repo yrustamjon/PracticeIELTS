@@ -1,3 +1,4 @@
+from django.db.models import Count
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -67,6 +68,7 @@ class MaterialSerializer(serializers.ModelSerializer):
     transcript_warnings = serializers.SerializerMethodField()
     mock_available = serializers.SerializerMethodField()
     question_count = serializers.SerializerMethodField()
+    part_question_counts = serializers.SerializerMethodField()
     transcript_audio_id = serializers.SerializerMethodField()
 
     class Meta:
@@ -90,6 +92,7 @@ class MaterialSerializer(serializers.ModelSerializer):
             "transcript_warnings",
             "mock_available",
             "question_count",
+            "part_question_counts",
             "transcript_audio_id",
         ]
 
@@ -170,6 +173,22 @@ class MaterialSerializer(serializers.ModelSerializer):
         else:
             qs = obj.published_questions
         return qs.questions.count() if qs else 0
+
+    @extend_schema_field(serializers.DictField(child=serializers.IntegerField()))
+    def get_part_question_counts(self, obj) -> dict[str, int]:
+        user = self.context["request"].user
+        if user.can_edit and (
+            user.is_staff or user.role == "admin" or obj.owner_id == user.pk
+        ):
+            question_set = obj.question_sets.first()
+        else:
+            question_set = obj.published_questions
+        if not question_set:
+            return {}
+        return {
+            str(row["part"]): row["total"]
+            for row in question_set.questions.values("part").annotate(total=Count("id"))
+        }
 
     def get_transcript_audio_id(self, obj) -> int | None:
         version = self.version(obj)

@@ -64,19 +64,42 @@ TEMPLATES = [
         },
     }
 ]
-WSGI_APPLICATION = "config.wsgi.application"
-database_url = os.getenv("DATABASE_URL")
-if not database_url and os.getenv("POSTGRES_PASSWORD") and not os.getenv("USE_SQLITE"):
-    database_url = (
-        "postgresql://practiceielts:"
-        + quote(os.environ["POSTGRES_PASSWORD"], safe="")
-        + "@127.0.0.1:5432/practiceielts"
-    )
-DATABASES = {
-    "default": dj_database_url.parse(
-        database_url or f"sqlite:///{BASE_DIR / 'db.sqlite3'}", conn_max_age=60
-    )
-}
+
+USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() in (
+    "true", "1", "yes"
+)
+
+if USE_SQLITE:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+else:
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url and os.getenv("POSTGRES_PASSWORD"):
+        database_url = (
+            "postgresql://practiceielts:"
+            + quote(os.environ["POSTGRES_PASSWORD"], safe="")
+            + "@127.0.0.1:5432/practiceielts"
+        )
+
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL or POSTGRES_PASSWORD is required "
+            "when USE_SQLITE is disabled."
+        )
+
+    DATABASES = {
+        "default": dj_database_url.parse(
+            database_url,
+            conn_max_age=60,
+        )
+    }
+
+
 AUTH_USER_MODEL = "accounts.User"
 AUTH_PASSWORD_VALIDATORS = [
     {
