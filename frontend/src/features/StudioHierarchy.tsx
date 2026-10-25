@@ -188,20 +188,11 @@ export function BookHierarchy({
     );
   }
   function branch(parent: number | null, seen = new Set<number>()): ReactNode {
-    const path = categoryPath(categories.data || [], effectiveCategory);
-    const parentIndex = path.findIndex((c) => c.id === parent);
-    const nextOnPath =
-      parent === null
-        ? path[0]
-        : parentIndex < 0
-          ? undefined
-          : path[parentIndex + 1];
     return (categories.data || [])
       .filter(
         (c) =>
           (c.parent || null) === parent &&
-          !seen.has(c.id) &&
-          (!nextOnPath || c.id === nextOnPath.id),
+          !seen.has(c.id),
       )
       .map((c) => {
         const open = expanded.has("c" + c.id),
@@ -238,9 +229,7 @@ export function BookHierarchy({
               <ul>
                 {branch(c.id, next)}
                 {tests.data
-                  ?.filter(
-                    (t) => t.category === c.id && (!testId || t.id === testId),
-                  )
+                  ?.filter((t) => t.category === c.id)
                   .map(testNode)}
               </ul>
             )}

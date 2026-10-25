@@ -170,11 +170,14 @@ def test_material_exposes_only_published_part_question_counts(exam_data):
     third = {**choice(number=2), "part": 3}
     publish(exam_data, [first, third])
     draft = {**choice(number=1), "part": 2}
-    assert client.put(
-        f"/api/v1/materials/{material.pk}/questions/",
-        {"questions": [draft], "duration_seconds": 60},
-        format="json",
-    ).status_code == 201
+    assert (
+        client.put(
+            f"/api/v1/materials/{material.pk}/questions/",
+            {"questions": [draft], "duration_seconds": 60},
+            format="json",
+        ).status_code
+        == 201
+    )
     client.force_authenticate(student)
     response = client.get(f"/api/v1/materials/{material.pk}/")
     assert response.status_code == 200
@@ -232,7 +235,7 @@ def test_active_exam_blocks_all_study_routes_and_cross_user_access(exam_data):
     client.post(
         f"/api/v1/sessions/{s['id']}/check/", {"answer": "wrong"}, format="json"
     )
-    a = start(exam_data)
+    a = start(exam_data, "timed")
     assert client.get(f"/api/v1/materials/{m.pk}/").status_code == 403
     assert client.get(f"/api/v1/audio/{v.audio_id}/stream/").status_code == 403
     assert (
@@ -310,7 +313,7 @@ def test_untimed_survives_elapsed_days_and_resume(exam_data, monkeypatch):
 
 def test_audio_delivery_is_owned_and_single_use(exam_data):
     publish(exam_data)
-    a = start(exam_data)
+    a = start(exam_data, "timed")
     client = exam_data[0]
     path = f"/api/v1/mock-attempts/{a['id']}/"
     assert client.get(path + "audio/").status_code == 403
@@ -323,6 +326,62 @@ def test_audio_delivery_is_owned_and_single_use(exam_data):
     assert response["Accept-Ranges"] == "none"
     assert (
         client.get(ticket["url"], HTTP_X_EXAM_AUDIO=ticket["ticket"]).status_code == 403
+    )
+
+
+def test_untimed_playback_can_reload_and_reopen_without_losing_answers(exam_data):
+    publish(exam_data)
+    attempt = start(exam_data)
+    client = exam_data[0]
+    path = f"/api/v1/mock-attempts/{attempt['id']}/"
+    client.patch(path, {"answers": {"1": "station"}}, format="json")
+    ticket = client.post(path + "start-audio/").data
+    for _ in range(2):
+        response = client.get(ticket["url"], HTTP_X_EXAM_AUDIO=ticket["ticket"])
+        assert response.status_code == 200
+        assert b"".join(response.streaming_content).startswith(b"RIFF")
+    reopened = client.post(path + "start-audio/")
+    assert reopened.status_code == 200
+    response = client.get(
+        reopened.data["url"], HTTP_X_EXAM_AUDIO=reopened.data["ticket"]
+    )
+    assert response.status_code == 200
+    assert b"".join(response.streaming_content).startswith(b"RIFF")
+    resumed = client.post(
+        "/api/v1/mock-attempts/",
+        {"material": exam_data[5].pk, "timing": "untimed"},
+        format="json",
+    )
+    assert resumed.status_code == 200
+    assert resumed.data["id"] == attempt["id"]
+    assert resumed.data["answers"] == {"1": "station"}
+    assert (
+        client.get(reopened.data["url"], HTTP_X_EXAM_AUDIO="wrong").status_code == 403
+    )
+    client.force_authenticate(exam_data[3])
+    assert client.post(path + "start-audio/").status_code == 404
+
+
+def test_untimed_can_retry_a_ticket_before_download(exam_data):
+    publish(exam_data)
+    attempt = start(exam_data)
+    path = f"/api/v1/mock-attempts/{attempt['id']}/start-audio/"
+    assert exam_data[0].post(path).status_code == 200
+    assert exam_data[0].post(path).status_code == 200
+
+
+def test_untimed_attempt_leaves_practice_available(exam_data):
+    publish(exam_data)
+    start(exam_data)
+    client, _, _, _, _, material, _ = exam_data
+    assert client.get(f"/api/v1/materials/{material.pk}/").status_code == 200
+    assert (
+        client.post(
+            "/api/v1/sessions/",
+            {"material": material.pk, "difficulty": "easy"},
+            format="json",
+        ).status_code
+        == 200
     )
 
 

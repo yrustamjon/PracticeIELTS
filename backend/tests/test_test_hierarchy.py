@@ -213,9 +213,7 @@ def test_full_test_builds_real_audio_versions_questions_and_private_pages(
     test.refresh_from_db()
     assert test.full_material.published_version_id == version
     c = client(book[1])
-    attempt = c.post(
-        "/api/v1/mock-attempts/", {"material": full.pk, "timing": "untimed"}
-    )
+    attempt = c.post("/api/v1/mock-attempts/", {"material": full.pk, "timing": "timed"})
     assert attempt.status_code == 201
     assert len(attempt.data["questions"]) == 4
     assert all("answers" not in q for q in attempt.data["questions"])
@@ -265,6 +263,119 @@ def test_worker_failure_is_visible_and_incomplete_tests_do_not_queue(book):
         queue_assembly(test.pk)
     test.refresh_from_db()
     assert test.assembly_state == "failed" and "worker" in test.assembly_error
+
+
+def test_explicit_retry_recovers_a_queued_full_test(book):
+    for number in range(1, 5):
+        add_part(book, number)
+    test = book[2]
+    test.assembly_state = "queued"
+    test.save()
+    with patch(
+        "learning.tasks.assemble_listening_test.delay", side_effect=build_full_test
+    ):
+        response = client(book[0]).post(f"/api/v1/listening-tests/{test.pk}/assemble/")
+    assert response.status_code == 200
+    test.refresh_from_db()
+    assert test.assembly_state == "ready"
+    assert test.full_material.published_questions.questions.count() == 4
+
+
+def test_untimed_part_and_full_attempts_can_be_open_together(book):
+    parts = [add_part(book, number) for number in range(1, 5)]
+    build_full_test(book[2].pk)
+    book[2].refresh_from_db()
+    learner = client(book[1])
+    for material in [parts[0], parts[1], book[2].full_material]:
+        response = learner.post(
+            "/api/v1/mock-attempts/", {"material": material.pk, "timing": "untimed"}
+        )
+        assert response.status_code == 201
+    assert learner.get(f"/api/v1/materials/{parts[0].pk}/").status_code == 200
+
+
+def test_timed_attempt_blocks_resuming_an_existing_untimed_sibling(book):
+    first = add_part(book, 1, presentation="pdf")
+    second = add_part(book, 2)
+    learner = client(book[1])
+    untimed = learner.post(
+        "/api/v1/mock-attempts/", {"material": first.pk, "timing": "untimed"}
+    )
+    assert untimed.status_code == 201
+    timed = learner.post(
+        "/api/v1/mock-attempts/", {"material": second.pk, "timing": "timed"}
+    )
+    assert timed.status_code == 201
+    path = f"/api/v1/mock-attempts/{untimed.data['id']}/"
+    assert learner.get(path).status_code == 403
+    assert learner.post(path + "start-audio/").status_code == 403
+    assert learner.post(
+        "/api/v1/mock-attempts/",
+        {"material": first.pk, "timing": "untimed", "restart": True},
+    ).status_code in (400, 403)
+    from exams.models import MockAttempt
+
+    assert MockAttempt.objects.get(pk=untimed.data["id"]).submitted_at is None
+    assert learner.get(path + "pdf-pages/1/").status_code == 403
+    assert (
+        learner.patch(path, {"answers": {"1": "open"}}, format="json").status_code
+        == 403
+    )
+    assert learner.post(
+        "/api/v1/mock-attempts/", {"material": first.pk, "timing": "untimed"}
+    ).status_code in (400, 403)
+    learner.post(f"/api/v1/mock-attempts/{timed.data['id']}/submit/")
+    assert learner.get(path).status_code == 200
+
+
+def test_timed_attempt_hides_blocked_sibling_answers_and_history(book):
+    first = add_part(book, 1, presentation="pdf")
+    second = add_part(book, 2)
+    learner = client(book[1])
+    old = learner.post(
+        "/api/v1/mock-attempts/", {"material": first.pk, "timing": "timed"}
+    ).data
+    learner.patch(
+        f"/api/v1/mock-attempts/{old['id']}/", {"answers": {"1": "open"}}, format="json"
+    )
+    learner.post(f"/api/v1/mock-attempts/{old['id']}/submit/")
+    untimed = learner.post(
+        "/api/v1/mock-attempts/", {"material": first.pk, "timing": "untimed"}
+    ).data
+    learner.patch(
+        f"/api/v1/mock-attempts/{untimed['id']}/",
+        {"answers": {"1": "private-saved-answer"}},
+        format="json",
+    )
+    timed = learner.post(
+        "/api/v1/mock-attempts/", {"material": second.pk, "timing": "timed"}
+    ).data
+    listing = learner.get("/api/v1/mock-attempts/").data
+    assert [attempt["id"] for attempt in listing["results"]] == [timed["id"]]
+    assert "private-saved-answer" not in str(listing)
+    assert learner.get(f"/api/v1/mock-attempts/{old['id']}/").status_code == 403
+    assert (
+        learner.get(f"/api/v1/mock-attempts/{old['id']}/pdf-pages/1/").status_code
+        == 403
+    )
+    learner.post(f"/api/v1/mock-attempts/{timed['id']}/submit/")
+    assert learner.get(f"/api/v1/mock-attempts/{old['id']}/").status_code == 200
+
+
+def test_retry_does_not_rebuild_an_unchanged_ready_full_test(book):
+    for number in range(1, 5):
+        add_part(book, number)
+    test = book[2]
+    build_full_test(test.pk)
+    test.refresh_from_db()
+    version = test.full_material.published_version_id
+    with patch(
+        "learning.tasks.assemble_listening_test.delay", side_effect=build_full_test
+    ):
+        queue_assembly(test.pk, retry=True)
+    test.refresh_from_db()
+    assert test.assembly_state == "ready"
+    assert test.full_material.published_version_id == version
 
 
 def test_part_authoring_accepts_real_ielts_numbering_without_rewriting_history(book):

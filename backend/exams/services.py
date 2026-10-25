@@ -208,9 +208,9 @@ def active_material_ids(user):
     from learning.models import ListeningTest, TestPart
 
     active = set(
-        MockAttempt.objects.filter(user=user, submitted_at__isnull=True).values_list(
-            "material_id", flat=True
-        )
+        MockAttempt.objects.filter(
+            user=user, submitted_at__isnull=True, timing="timed"
+        ).values_list("material_id", flat=True)
     )
     tests = ListeningTest.objects.filter(
         Q(full_material_id__in=active) | Q(parts__material_id__in=active)
@@ -298,7 +298,7 @@ def issue_audio_ticket(attempt):
             attempt.deadline and attempt.deadline <= timezone.now()
         ):
             raise PermissionDenied("This attempt has ended.")
-        if attempt.audio_started_at:
+        if attempt.timing == "timed" and attempt.audio_started_at:
             raise PermissionDenied("Exam audio can be started once for this attempt.")
         token = secrets.token_urlsafe(32)
         attempt.audio_ticket_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -327,10 +327,11 @@ def exam_audio_response(attempt, token):
             or attempt.audio_ticket_expires < timezone.now()
         ):
             raise PermissionDenied("The exam audio ticket is invalid or expired.")
-        if attempt.audio_consumed_at:
+        if attempt.timing == "timed" and attempt.audio_consumed_at:
             raise PermissionDenied("The exam audio has already been delivered.")
-        attempt.audio_consumed_at = timezone.now()
-        attempt.save(update_fields=["audio_consumed_at"])
+        if not attempt.audio_consumed_at:
+            attempt.audio_consumed_at = timezone.now()
+            attempt.save(update_fields=["audio_consumed_at"])
         audio = attempt.version.audio
 
     def stream():

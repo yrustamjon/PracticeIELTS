@@ -77,6 +77,10 @@ export function AudioPlayer({
     }
   }, [start, end]);
   useEffect(() => {
+    if (playRequest === 0) {
+      audio.current?.pause();
+      return;
+    }
     if (playRequest && source && audio.current) {
       audio.current.currentTime = start / 1000;
       void audio.current

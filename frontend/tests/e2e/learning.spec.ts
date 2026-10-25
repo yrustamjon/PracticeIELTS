@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
+import { copyFileSync } from "node:fs";
 const root = path.resolve("..");
 const stamp = Date.now().toString(36);
 const teacher = `teacher_${stamp}`,
@@ -20,13 +21,8 @@ const fixtureEnv = {
 };
 function fixture(mode: string, extra: Record<string, string> = {}) {
   return execFileSync(
-    "python",
-    [
-      "infrastructure/run.py",
-      "backend/.venv/bin/python",
-      "backend/tests/browser_fixture.py",
-      mode,
-    ],
+    process.env.TEST_PYTHON || path.join(root, "backend/.venv/bin/python"),
+    ["backend/tests/browser_fixture.py", mode],
     { cwd: root, env: { ...fixtureEnv, ...extra }, stdio: "pipe" },
   );
 }
@@ -41,20 +37,23 @@ async function login(page: import("@playwright/test").Page, username: string) {
 }
 test.beforeAll(() => {
   execFileSync("mkdir", ["-p", path.dirname(recording)]);
-  execFileSync(
-    "ffmpeg",
-    [
-      "-y",
-      "-f",
-      "lavfi",
-      "-i",
-      `flite=text='Welcome to our library. The books are upstairs.':voice=slt`,
-      "-ar",
-      "22050",
-      recording,
-    ],
-    { stdio: "ignore" },
-  );
+  if (process.env.TEST_RECORDING_SOURCE) {
+    copyFileSync(process.env.TEST_RECORDING_SOURCE, recording);
+  } else
+    execFileSync(
+      "ffmpeg",
+      [
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        `flite=text='Welcome to our library. The books are upstairs.':voice=slt`,
+        "-ar",
+        "22050",
+        recording,
+      ],
+      { stdio: "ignore" },
+    );
   fixture("create");
   fixture("create_pdf");
 });
@@ -419,11 +418,8 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     studentPage.getByText("No time limit", { exact: true }),
   ).toBeVisible();
   await studentPage
-    .getByRole("button", { name: "Start audio once", exact: true })
+    .getByRole("button", { name: "Play recording", exact: true })
     .click();
-  await expect(
-    studentPage.getByRole("button", { name: "Start audio once", exact: true }),
-  ).toBeDisabled();
   await expect
     .poll(() =>
       studentPage
@@ -431,6 +427,9 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
         .evaluate((a: HTMLAudioElement) => a.currentTime),
     )
     .toBeGreaterThan(0.1);
+  await expect(
+    studentPage.getByRole("button", { name: "Replay recording", exact: true }),
+  ).toBeEnabled();
   await studentPage.screenshot({
     path: "test-results/untimed-mock-desktop.png",
     fullPage: true,
@@ -1194,6 +1193,7 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
   browser,
 }) => {
   test.setTimeout(240000);
+  await page.setViewportSize({ width: 1600, height: 900 });
   const signedIn = page.waitForResponse(
     (r) =>
       r.url().endsWith("/api/v1/auth/login/") &&
@@ -1201,7 +1201,26 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
   );
   await login(page, teacher);
   const token = (await (await signedIn).json()).access;
+  const siblingCategories: number[] = [];
+  try {
   await page.goto("/admin");
+  async function adminFrame() {
+    await page.evaluate(() => window.scrollTo(0, 0));
+    return Promise.all(
+      [".page-title", ".studio-layout", ".book-hierarchy", "#workspace-navigation"].map(
+        (selector) => page.locator(selector).boundingBox(),
+      ),
+    );
+  }
+  const frame = await adminFrame();
+  async function expectAdminFrame() {
+    const current = await adminFrame();
+    for (let i = 0; i < frame.length; i++) {
+      expect(current[i]).not.toBeNull();
+      for (const dimension of ["x", "y", "width"] as const)
+        expect(current[i]![dimension]).toBeCloseTo(frame[i]![dimension], 0);
+    }
+  }
   await page.getByRole("button", { name: "Add book", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Name", exact: true })
@@ -1213,6 +1232,8 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
       exact: true,
     }),
   ).toBeVisible();
+  const book = new URL(page.url()).searchParams.get("category")!;
+  await expectAdminFrame();
   await expect(
     page.getByRole("button", { name: "New test", exact: true }),
   ).toHaveCount(0);
@@ -1225,6 +1246,21 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
     page.getByRole("heading", { name: `Review book ${stamp}`, exact: true }),
   ).toBeVisible();
   const category = new URL(page.url()).searchParams.get("category")!;
+  for (const [resource, data] of [
+    ["categories/", { name: `Other collection ${stamp}` }],
+    ["categories/", { name: `Other volume ${stamp}`, parent: Number(book) }],
+    ["listening-tests/", { title: "Test 2", category: Number(category) }],
+  ] as const) {
+    const response = await page.request.post(`/api/v1/${resource}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data,
+    });
+    expect(response.ok()).toBe(true);
+    const created = await response.json();
+    if (resource === "categories/") siblingCategories.push(created.id);
+  }
+  await page.reload();
+  await expectAdminFrame();
   await page
     .getByRole("navigation", { name: "Book hierarchy", exact: true })
     .getByRole("button", { name: `Review collection ${stamp}`, exact: true })
@@ -1276,6 +1312,7 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
   await expect(
     hierarchy.getByRole("button", { name: /^Test 1/ }),
   ).toBeVisible();
+  await expectAdminFrame();
   await page
     .getByRole("button", { name: "Add Part", exact: true })
     .first()
@@ -1287,6 +1324,31 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
       .getByRole("navigation", { name: "Book hierarchy", exact: true })
       .getByRole("button", { name: "Open Part 1, Test 1", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  await expectAdminFrame();
+  for (const name of [
+    `Other collection ${stamp}`,
+    `Other volume ${stamp}`,
+    /^Test 2/,
+  ])
+    await expect(hierarchy.getByRole("button", { name, exact: true })).toBeVisible();
+  const details = (await page.locator("#material-details").boundingBox())!;
+  expect(details.x + details.width).toBeCloseTo(frame[1]!.x + frame[1]!.width, 0);
+  const wizard = (await page.locator(".studio-wizard-navigation").boundingBox())!;
+  expect(wizard.x + wizard.width).toBeCloseTo(frame[1]!.x + frame[1]!.width, 0);
+  await page.screenshot({
+    path: "test-results/approved-admin-part-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBe(true);
+  await expect(hierarchy).toBeVisible();
+  await page.screenshot({
+    path: "test-results/approved-admin-part-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page
     .getByRole("navigation", { name: "Book hierarchy", exact: true })
     .getByRole("button", { name: "Add Part 2, Test 1", exact: true })
@@ -1294,6 +1356,7 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
   await expect(
     page.getByRole("heading", { name: "Test 1 · Part 2", exact: true }),
   ).toBeVisible();
+  await expectAdminFrame();
   await page
     .getByRole("navigation", { name: "Book hierarchy", exact: true })
     .getByRole("button", { name: "Open Part 1, Test 1", exact: true })
@@ -1579,9 +1642,17 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
     fullPage: true,
   });
   await context.close();
+  } finally {
+    for (const id of siblingCategories.reverse()) {
+      const response = await page.request.delete(`/api/v1/categories/${id}/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(response.ok()).toBe(true);
+    }
+  }
 });
 
-test("Practice keeps long exercise lists paginated and saves answers across pages", async ({
+test("Practice expands the editor with page scrolling and keeps exercise pagination", async ({
   page,
 }) => {
   const material = fixture("create_long_practice").toString().trim();
@@ -1618,12 +1689,37 @@ test("Practice keeps long exercise lists paginated and saves answers across page
   await expect(
     page.getByLabel("What did you hear?", { exact: true }),
   ).toHaveValue(reference);
+  const editor = page.getByLabel("What did you hear?", { exact: true });
+  await editor.fill("library ".repeat(120));
+  await page.getByRole("button", { name: "Check Answer", exact: true }).click();
+  await expect(page.locator(".comparison")).toBeVisible();
+  for (const selector of [
+    ".practice-answer-scroll",
+    ".practice-session-main",
+  ]) {
+    const size = await page.locator(selector).evaluate((el) => ({
+      visible: el.clientHeight,
+      content: el.scrollHeight,
+    }));
+    expect(size.content).toBeLessThanOrEqual(size.visible + 1);
+  }
   expect(
-    (await page.locator(".practice-check-actions").boundingBox())!.y,
-  ).toBeLessThan(720);
+    await editor.evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
+  ).toBe(true);
   expect(
-    (await page.locator(".workspace-navigation").boundingBox())!.y,
-  ).toBeLessThan(720);
+    await page.evaluate(
+      () => document.documentElement.scrollHeight > innerHeight,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => editor.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/practice-long-feedback-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page
+    .getByRole("button", { name: "Next Segment", exact: true })
+    .scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await page.screenshot({
     path: "test-results/approved-practice-pagination.png",
     fullPage: true,
@@ -1631,6 +1727,79 @@ test("Practice keeps long exercise lists paginated and saves answers across page
   await page.getByRole("button", { name: /^Medium/ }).click();
   await expect(page.locator(".expected-word-count")).toHaveCount(0);
   await expect(page.locator(".practice-exercise-list button")).toHaveCount(8);
+});
+
+test("untimed Mock supports replay, seeking, exit and returning with saved answers", async ({
+  page,
+}) => {
+  const material = fixture("create_compact_mock").toString().trim();
+  await login(page, student);
+  await page.goto(`/library/${material}?mode=mock`);
+  await page.getByRole("radio", { name: /No time limit/ }).check();
+  await page.getByRole("button", { name: "Start Mock", exact: true }).click();
+  const attemptUrl = page.url();
+  await page.getByLabel("Answer 1", { exact: true }).fill("station");
+  await page
+    .getByRole("button", { name: "Play recording", exact: true })
+    .click();
+  const recording = page.locator(".exam-audio audio");
+  await expect
+    .poll(() => recording.evaluate((el: HTMLAudioElement) => el.currentTime))
+    .toBeGreaterThan(0.1);
+  await page
+    .getByRole("button", { name: "Pause recording", exact: true })
+    .click();
+  await page
+    .getByRole("slider", { name: "Recording position", exact: true })
+    .fill("1");
+  expect(
+    await recording.evaluate((el: HTMLAudioElement) => el.currentTime),
+  ).toBeCloseTo(1, 0);
+  await page.getByLabel("Playback speed", { exact: true }).selectOption("1.5");
+  expect(
+    await recording.evaluate((el: HTMLAudioElement) => el.playbackRate),
+  ).toBe(1.5);
+  await page
+    .getByRole("button", { name: "Replay recording", exact: true })
+    .click();
+  await expect
+    .poll(() => recording.evaluate((el: HTMLAudioElement) => el.paused))
+    .toBe(false);
+  await page.getByRole("link", { name: "Save & exit", exact: true }).click();
+  await expect(page).toHaveURL(/mock-tests/);
+  await page.goto(`/library/${material}?mode=mock`);
+  await expect(
+    page.getByRole("radio", { name: /No time limit/ }),
+  ).toBeChecked();
+  await page.getByRole("button", { name: "Resume Mock", exact: true }).click();
+  await expect(page).toHaveURL(attemptUrl);
+  await expect(page.getByLabel("Answer 1", { exact: true })).toHaveValue(
+    "station",
+  );
+  await page
+    .getByRole("button", { name: "Play recording", exact: true })
+    .click();
+  await expect
+    .poll(() => recording.evaluate((el: HTMLAudioElement) => el.currentTime))
+    .toBeGreaterThan(0.1);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Play recording", exact: true })
+    .click();
+  await expect
+    .poll(() => recording.evaluate((el: HTMLAudioElement) => el.currentTime))
+    .toBeGreaterThan(0.1);
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
 });
 
 test("review timing edits adjust adjacent sentences and save without losing text", async ({

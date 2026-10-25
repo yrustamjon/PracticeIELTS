@@ -56,9 +56,19 @@ from .schema import (
     SessionSchema,
     SessionUpdate,
 )
-from .serializers import AudioSerializer, CategorySerializer, MaterialSerializer
+from .serializers import (
+    AudioSerializer,
+    CategorySerializer,
+    MaterialSerializer,
+    PracticeTimingInput,
+)
 from .services.audio import inspect_audio
 from .services.comparison import compare, groups
+from .services.practice_timing import (
+    can_edit_timing,
+    latest_timing_revision,
+    save_timing,
+)
 
 
 class EditorOrReadOnly(BasePermission):
@@ -559,6 +569,8 @@ def session_data(session):
         "version": session.version_id,
         "difficulty": session.difficulty,
         "grouping_version": session.grouping_version,
+        "timing_revision": session.timing_revision_id,
+        "can_edit_timing": can_edit_timing(session),
         "position": session.position,
         "drafts": session.drafts,
         "groups": [
@@ -605,7 +617,7 @@ class SessionViewSet(viewsets.ViewSet):
     def own(self, request, pk):
         instance = get_object_or_404(
             PracticeSession.objects.select_related(
-                "version", "material", "version__audio"
+                "version", "material", "version__audio", "timing_revision", "user"
             ),
             pk=pk,
             user=request.user,
@@ -639,11 +651,31 @@ class SessionViewSet(viewsets.ViewSet):
             version=material.published_version,
             difficulty=difficulty,
             grouping_version=1,
+            timing_revision=(
+                latest_timing_revision(material.published_version_id, 1)
+                if difficulty == "easy"
+                else None
+            ),
         )
         return Response(session_data(session))
 
     def retrieve(self, request, pk=None):
         return Response(session_data(self.own(request, pk)))
+
+    @extend_schema(request=PracticeTimingInput, responses=SessionSchema)
+    @action(detail=True, methods=["patch"])
+    def timing(self, request, pk=None):
+        session = self.own(request, pk)
+        if not request.user.is_staff and request.user.role != "admin":
+            raise PermissionDenied("Only administrators can correct Practice timing.")
+        if session.difficulty != "easy":
+            raise ValidationError(
+                {"detail": "Timing corrections are available only in Easy mode."}
+            )
+        serializer = PracticeTimingInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session = save_timing(session, request.user, serializer.validated_data)
+        return Response(session_data(session))
 
     def partial_update(self, request, pk=None):
         with transaction.atomic():

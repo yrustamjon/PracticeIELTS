@@ -52,7 +52,7 @@ source .venv/bin/activate
 celery -A config worker --loglevel=info --concurrency=1
 ```
 
-Keep the worker running for automatic transcription. Vite proxies API requests to Django. Create a staff account interactively:
+Keep the worker running for automatic transcription and Full assembly. On macOS, start it with `celery -A config.celery worker --loglevel=info --pool=solo --concurrency=1`. Restart an older worker after updates so it registers `learning.tasks.assemble_listening_test`. A Full left waiting can be recovered with **Retry Full test** in the test's admin page. Vite proxies API requests to Django. Create a staff account interactively:
 
 ```bash
 backend/.venv/bin/python backend/manage.py createsuperuser
@@ -84,7 +84,7 @@ This displays the content already saved in the question version. It does not rec
 
 ## Native HTML exam like the supplied reference
 
-The listening workspace now uses a compact white header/audio toolbar, a full question paper and bottom Part navigation. Notes, forms and tables retain their complete text with native answer fields embedded in place; radio/checkbox choices stay beside their option text. The current part expands its question numbers, while other parts show their actual question counts. Timed/untimed behavior, autosave and one-play audio restrictions remain enforced. Fullscreen is available from the exam toolbar; source controls that reveal keys/transcripts or unrestricted replay are not copied.
+The listening workspace uses a compact white header/player toolbar, a full question paper and bottom Part navigation. Notes, forms and tables retain their complete text with native answer fields embedded in place; radio/checkbox choices stay beside their option text. The current part expands its question numbers, while other parts show their actual question counts. Timed attempts retain one-play restrictions; no-time-limit Mock supports pause, replay, seeking, speed and returning to saved work. Fullscreen is available from the exam toolbar. Answer keys remain hidden until submission.
 
 In Content Studio, upload **HTML question paper**. The importer recognizes `id="part1"` … `id="part4"` sections and `data-question="1"` … `"40"` text inputs, radio/checkbox options and select controls, including the format of the user's reference. It creates editable sections and question drafts. Review all content and enter each answer key, then save and explicitly publish. Existing keys for matching question numbers are preserved rather than read from source scripts. In the formatted-paper editor, `{{1}}` marks an answer blank; `{{3:A}}` inserts one option control. Backend validation requires every question/option marker to match its part and option labels.
 
@@ -104,7 +104,9 @@ Text-only authoring is still available by disabling the original-layout option. 
 
 Question sets are versioned. Attempts pin both the transcript/audio version and the published question set. Timed deadlines are server-enforced; untimed attempts have no deadline and never expire because of elapsed time. Draft answers autosave and resume. Submission scores accepted answer variants and makes the attempt read-only.
 
-The exam UI starts audio once. A single-use server ticket delivers it, and study/transcript/hint endpoints for that student's active material are blocked until submission. Once bytes reach a browser, a determined client can record or retain them; this is not DRM or a secure proctoring system. Leaving/reloading stops playback and does not grant a second start. Large recordings currently download into an authenticated blob before playback.
+**Real Exam · Timed** starts the recording once. A single-use owned server ticket delivers it; study/transcript/hint endpoints and sibling attempt history are blocked until submission. Leaving/reloading does not grant a second start. **Mock · No time limit** permits pause, replay, seeking, speed changes and fresh playback after returning or reloading. Untimed Parts and Full attempts can stay open together. Large recordings download into an authenticated blob before playback. Once bytes reach a browser, a client can retain them; this is not DRM or secure proctoring.
+
+Practice shows the complete **Listen and write** editor and feedback. The page scrolls when necessary; the textarea expands with its text, including after a viewport resize. Exercise pagination remains separate.
 
 ## Interface and navigation
 
@@ -194,3 +196,7 @@ Existing tests previously saved directly under a book remain accessible in the h
 In Review, finish a start/end time with Enter or by leaving its field. Your chosen interval stays fixed; overlapping/too-close neighboring edges adjust to leave 0.05 seconds. Existing larger pauses stay intact. If there is insufficient room for a neighboring sentence, the editor explains which boundary needs correction. **Undo timing edit** restores the last change without discarding text corrections.
 
 Empty sentences can be removed and restored with **Undo remove**. Manual entry is disabled when the final sentence already reaches the recording's end. Inline errors identify invalid text/times before saving; corrected transcripts save as new versions. Changing boundaries requires timing review for the affected sentences; unchanged sentences retain their existing word anchors, including after a row is removed.
+
+## Correct audio timing during Easy Practice
+
+An administrator (admin role or Django staff) can open **Adjust timing** below the Easy audio player. Set absolute start/end seconds (up to three decimal places), use the ±0.1-second controls, preview, then save. Cancel stops preview and restores the saved window. Invalid audio bounds and overlapping exercises are rejected with feedback. The correction persists for the current admin session and new Easy attempts; existing student attempts keep their original timing. Medium/Hard/Full and transcript text are unchanged. Reopen Easy from the material if another admin has already saved newer timing. Apply normal Django migrations after pulling; this feature adds learning migration 0006.

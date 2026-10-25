@@ -4728,6 +4728,25 @@ html {
   height: 5px;
   accent-color: #757575;
 }
+#exam-audio-slot .exam-audio-actions .recording-seek {
+  flex: 1;
+  width: auto;
+  min-width: 35px;
+}
+.recording-speed {
+  width: 58px;
+  min-height: 26px;
+  padding: 2px;
+  font-size: 11px;
+}
+@media (max-width: 700px) {
+  #exam-audio-slot .untimed-recording .recording-volume {
+    display: none;
+  }
+  .recording-speed {
+    width: 48px;
+  }
+}
 .exam-recording-time {
   font-size: 12px;
   white-space: nowrap;

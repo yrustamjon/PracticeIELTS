@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -25,6 +26,7 @@ from .services import (
     exam_audio_response,
     expire_if_needed,
     finalize_attempt,
+    guard_study,
     issue_audio_ticket,
     render_document_page,
     require_text_content,
@@ -53,7 +55,7 @@ class MockAttemptViewSet(viewsets.ViewSet):
     queryset = MockAttempt.objects.none()
 
     def own(self, request, pk):
-        return expire_if_needed(
+        attempt = expire_if_needed(
             get_object_or_404(
                 MockAttempt.objects.select_related(
                     "material", "question_set", "version__audio"
@@ -62,15 +64,24 @@ class MockAttemptViewSet(viewsets.ViewSet):
                 user=request.user,
             )
         )
+        if attempt.timing == "untimed" or attempt.submitted_at:
+            guard_study(request.user, attempt.material_id)
+        return attempt
 
     def list(self, request):
+        attempts = MockAttempt.objects.filter(user=request.user).select_related(
+            "material", "question_set"
+        )
+        if not request.user.can_edit:
+            blocked = active_material_ids(request.user)
+            attempts = attempts.exclude(
+                Q(material_id__in=blocked)
+                & (Q(timing="untimed") | Q(submitted_at__isnull=False))
+            )
         return Response(
             {
                 "results": [
-                    attempt_data(a)
-                    for a in MockAttempt.objects.filter(user=request.user)
-                    .select_related("material", "question_set")
-                    .order_by("-started_at")[:50]
+                    attempt_data(a) for a in attempts.order_by("-started_at")[:50]
                 ]
             }
         )
@@ -91,6 +102,8 @@ class MockAttemptViewSet(viewsets.ViewSet):
         if previous:
             previous = expire_if_needed(previous)
             if not previous.submitted_at:
+                if previous.timing == "untimed":
+                    guard_study(request.user, material.pk)
                 if data["restart"]:
                     finalize_attempt(previous.pk, request.user)
                 else:
@@ -109,6 +122,8 @@ class MockAttemptViewSet(viewsets.ViewSet):
                 user=request.user, material=material, submitted_at__isnull=True
             ).first()
             if existing:
+                if existing.timing == "untimed":
+                    guard_study(request.user, material.pk)
                 return Response(attempt_data(existing))
             if material.pk in active_material_ids(request.user):
                 raise ValidationError(
@@ -140,6 +155,8 @@ class MockAttemptViewSet(viewsets.ViewSet):
                 MockAttempt.objects.select_for_update(), pk=pk, user=request.user
             )
             attempt = expire_if_needed(attempt)
+            if attempt.timing == "untimed":
+                guard_study(request.user, attempt.material_id)
             if attempt.submitted_at:
                 raise ValidationError(
                     {"detail": "This mock has already ended. Answers are read-only."}
@@ -223,6 +240,8 @@ class AttemptDocumentPage(APIView):
             user=request.user,
         )
         qs = attempt.question_set
+        if attempt.timing == "untimed" or attempt.submitted_at:
+            guard_study(request.user, attempt.material_id)
         if (
             qs.presentation == "text"
             or not qs.document_id
@@ -256,6 +275,8 @@ class AttemptPdfPage(APIView):
             user=request.user,
         )
         qs = attempt.question_set
+        if attempt.timing == "untimed" or attempt.submitted_at:
+            guard_study(request.user, attempt.material_id)
         if (
             qs.presentation != "pdf"
             or not qs.document_id

@@ -796,7 +796,7 @@
   font-size: 12px;
 }
 .practice-screen {
-  height: calc(100dvh - 121px);
+  height: auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -848,12 +848,14 @@
   gap: 20px;
   flex: 1;
   min-height: 0;
+  align-items: start;
 }
 .practice-exercises {
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  max-height: calc(100dvh - 250px);
 }
 .practice-exercises-heading {
   display: flex;
@@ -946,7 +948,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .practice-session-main .workspace-heading {
   padding: 19px 22px 12px;
@@ -1004,10 +1006,10 @@
   font-size: 8px;
 }
 .practice-answer-scroll {
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
+  overscroll-behavior: auto;
   min-height: 0;
-  flex: 1;
+  flex: none;
 }
 .practice-session-main .dictation-editor {
   padding: 0 22px 10px;
@@ -1023,7 +1025,8 @@
   width: 100%;
   padding: 12px;
   resize: vertical;
-  max-height: 250px;
+  max-height: none;
+  overflow: hidden;
 }
 .practice-session-main .dictation-editor > textarea::placeholder {
   font-size: 12px;
@@ -1109,8 +1112,8 @@
 }
 @media (min-width: 901px) {
   .main-content:has(> .practice-screen) {
-    height: 100dvh;
-    overflow: hidden;
+    height: auto;
+    overflow: visible;
     min-height: 0;
     padding-top: 92px;
     padding-bottom: 20px;
@@ -1119,7 +1122,7 @@
     display: none;
   }
   .main-content:has(> .practice-screen) > .practice-screen {
-    height: 100%;
+    height: auto;
   }
 }
 @media (max-width: 1150px) {
@@ -1326,7 +1329,7 @@
   }
   .practice-session-main {
     min-height: 510px;
-    max-height: 700px;
+    max-height: none;
   }
   .practice-session-main .dictation-editor > textarea {
     font-size: 16px;
@@ -1960,14 +1963,9 @@
 .studio-editor-layout > .stepped-editor {
   min-width: 0;
 }
-.studio-editor-layout .book-hierarchy {
-  top: 90px;
-}
-.studio-editor-layout .book-hierarchy .studio-tree-scroll {
-  max-height: calc(100dvh - 230px);
-}
-.studio-editor-layout .studio-flow {
-  margin-bottom: 18px;
+.studio-editor-layout .editor-grid,
+.studio-editor-layout .studio-wizard-navigation {
+  max-width: none;
 }
 .studio-editor-layout .stepped-editor > .back-link {
   font-size: 11px;

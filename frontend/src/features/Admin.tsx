@@ -683,8 +683,23 @@ function Editor({
     retry_wait: "Waiting to retry",
   };
   const groupId = m.test_part?.test || m.full_test || null;
+  const pageTitle = (
+    <PageTitle
+      eyebrow="CONTENT STUDIO / UPLOAD ONCE"
+      title={m.title}
+      description="Upload a mock recording. Review its transcript. Practice levels are prepared automatically."
+      action={<span className={`status-badge ${m.status}`}>{m.status}</span>}
+    />
+  );
   return (
-    <div className={groupId ? "studio-layout studio-editor-layout" : undefined}>
+    <div className={groupId ? "catalog-page admin-studio unified-studio" : undefined}>
+      {groupId && (
+        <>
+          {pageTitle}
+          <StudioFlow stage={4} />
+        </>
+      )}
+      <div className={groupId ? "studio-layout studio-editor-layout" : undefined}>
       {groupId && (
         <BookHierarchy
           categoryId={m.category}
@@ -693,8 +708,7 @@ function Editor({
           full={!!m.full_test}
         />
       )}
-      <div className="stepped-editor" data-step={editorStep}>
-        {groupId && <StudioFlow stage={4} />}
+      <div className="studio-main stepped-editor" data-step={editorStep}>
         <Link
           className="back-link"
           to={
@@ -706,14 +720,7 @@ function Editor({
           <ArrowLeft size={17} />
           Back to Content Studio
         </Link>
-        <PageTitle
-          eyebrow="CONTENT STUDIO / UPLOAD ONCE"
-          title={m.title}
-          description="Upload a mock recording. Review its transcript. Practice levels are prepared automatically."
-          action={
-            <span className={`status-badge ${m.status}`}>{m.status}</span>
-          }
-        />
+        {!groupId && pageTitle}
         <nav className="studio-steps" aria-label="Material setup steps">
           {[
             ["material-details", "1", "Details"],
@@ -1247,6 +1254,7 @@ function Editor({
             <ChevronRight size={15} />
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

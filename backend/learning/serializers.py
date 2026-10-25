@@ -5,6 +5,20 @@ from rest_framework import serializers
 from .models import AudioAsset, Category, Material, Segment
 
 
+class StrictIntegerField(serializers.IntegerField):
+    def to_internal_value(self, data):
+        if type(data) is not int:
+            self.fail("invalid")
+        return super().to_internal_value(data)
+
+
+class PracticeTimingInput(serializers.Serializer):
+    position = StrictIntegerField(min_value=0)
+    start_ms = StrictIntegerField(min_value=0)
+    end_ms = StrictIntegerField(min_value=1)
+    revision = StrictIntegerField(min_value=1, allow_null=True)
+
+
 class CategorySerializer(serializers.ModelSerializer):
     material_count = serializers.SerializerMethodField()
 

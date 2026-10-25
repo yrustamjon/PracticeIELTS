@@ -442,9 +442,16 @@ export function TestStudio() {
                           : "Upload Full recording"}
                       </button>
                     </div>
-                    {t.assembly_state === "failed" && (
+                    {["failed", "queued"].includes(t.assembly_state) && (
                       <div className="assembly-error">
-                        <p role="alert">{t.assembly_error}</p>
+                        <p
+                          role={
+                            t.assembly_state === "failed" ? "alert" : "status"
+                          }
+                        >
+                          {t.assembly_error ||
+                            "Waiting to prepare Full test. Retry if preparation does not start."}
+                        </p>
                         <button
                           className="button secondary"
                           disabled={busy}

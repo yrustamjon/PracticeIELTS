@@ -119,6 +119,15 @@ def compare(reference, answer, options=None):
 
 
 def groups(session):
+    intervals = base_groups(session)
+    revision = session.timing_revision
+    if session.difficulty == "easy" and revision is not None:
+        for position, timing in revision.overrides.items():
+            intervals[int(position)].update(timing)
+    return intervals
+
+
+def base_groups(session):
     from processing.segmentation import easy_chunks
 
     segments = list(session.version.segments.all())

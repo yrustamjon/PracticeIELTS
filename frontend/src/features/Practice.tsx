@@ -16,6 +16,7 @@ import { api, post, type Session, type Comparison } from "../services/api";
 import { Loading, ErrorState, PageTitle } from "../components/ui";
 import { Pagination } from "./Catalog";
 import { AudioPlayer } from "../components/AudioPlayer";
+import { PracticeTimingEditor, type PlaybackTiming } from "./PracticeTimingEditor";
 export function ComparisonView({ result }: { result: Comparison }) {
   return (
     <div className="comparison">
@@ -85,6 +86,20 @@ function Workspace({ initial }: { initial: Session }) {
   const [save, setSave] = useState("Saved");
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
+  const [timingPreview, setTimingPreview] = useState<PlaybackTiming | null>(null);
+  const [timingPlayRequest, setTimingPlayRequest] = useState(0);
+  const [timingMessage, setTimingMessage] = useState("");
+  const editor = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    function resize() {
+      if (!editor.current) return;
+      editor.current.style.height = "auto";
+      editor.current.style.height = `${editor.current.scrollHeight + 2}px`;
+    }
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [answer, session.position]);
   const navigate = useNavigate();
   const cache = useQueryClient();
   const latest = useRef({ answer, position: session.position });
@@ -157,6 +172,9 @@ function Workspace({ initial }: { initial: Session }) {
     setError(undefined);
     try {
       const s = await persist(answer, session.position, next);
+      setTimingPreview(null);
+      setTimingPlayRequest(0);
+      setTimingMessage("");
       setSession(s);
       setListPage(Math.floor(next / 8) + 1);
       setAnswer(s.drafts[String(next)] || "");
@@ -165,6 +183,31 @@ function Workspace({ initial }: { initial: Session }) {
       setSave("Saved");
     } catch (e) {
       setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveTiming(start_ms: number, end_ms: number) {
+    setBusy(true);
+    setError(undefined);
+    setTimingMessage("");
+    try {
+      await persist(answer, session.position);
+      const saved = await api<Session>(`sessions/${session.id}/timing/`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          position: session.position,
+          start_ms,
+          end_ms,
+          revision: session.timing_revision ?? null,
+        }),
+      });
+      setSession(saved);
+      cache.setQueryData(["session", String(session.id)], saved);
+      setTimingPreview(null);
+      setTimingPlayRequest(0);
+      setTimingMessage("Timing saved for Easy Practice.");
+      void cache.invalidateQueries({ queryKey: ["progress"] });
     } finally {
       setBusy(false);
     }
@@ -328,10 +371,28 @@ function Workspace({ initial }: { initial: Session }) {
           </div>
           <AudioPlayer
             url={session.audio.stream_url}
-            start={interval.start_ms}
-            end={interval.end_ms}
+            start={(timingPreview || interval).start_ms}
+            end={(timingPreview || interval).end_ms}
+            playRequest={timingPlayRequest}
           />
           <div className="practice-answer-scroll">
+            {session.difficulty === "easy" && session.can_edit_timing && (
+              <PracticeTimingEditor
+                key={`${session.version}:${session.position}:${session.timing_revision}`}
+                interval={interval}
+                duration={session.audio.duration_ms}
+                previousEnd={session.groups[session.position - 1]?.end_ms}
+                nextStart={session.groups[session.position + 1]?.start_ms}
+                busy={busy}
+                onPreview={(timing) => {
+                  setTimingPreview(timing);
+                  if (timing) setTimingPlayRequest((value) => value + 1);
+                  else setTimingPlayRequest(0);
+                }}
+                onSave={saveTiming}
+              />
+            )}
+            {timingMessage && <p className="practice-timing-message" role="status">{timingMessage}</p>}
             <div className="dictation-editor">
               {session.difficulty === "easy" &&
                 interval.word_count !== undefined && (
@@ -343,6 +404,7 @@ function Workspace({ initial }: { initial: Session }) {
                 )}
               <label htmlFor="answer">What did you hear?</label>
               <textarea
+                ref={editor}
                 id="answer"
                 value={answer}
                 onChange={(e) => {

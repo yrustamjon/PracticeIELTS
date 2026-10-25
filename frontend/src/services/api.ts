@@ -71,6 +71,8 @@ export type Session = {
   title: string;
   version: number;
   difficulty: string;
+  timing_revision?: number | null;
+  can_edit_timing?: boolean;
   position: number;
   drafts: Record<string, string>;
   groups: {

@@ -10,6 +10,8 @@ import {
   ChevronRight,
   Check,
   Play,
+  Pause,
+  RotateCcw,
   Volume2,
   Headphones,
   ShieldCheck,
@@ -43,6 +45,7 @@ export function MockSelection({
   available: boolean;
 }) {
   const [timing, setTiming] = useState<"timed" | "untimed">("timed");
+  const [timingChosen, setTimingChosen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
   const navigate = useNavigate();
@@ -53,6 +56,9 @@ export function MockSelection({
   const active = attempts.data?.results.find(
     (a) => a.material === materialId && !a.submitted_at,
   );
+  useEffect(() => {
+    if (active && !timingChosen) setTiming(active.timing);
+  }, [active?.id, active?.timing, timingChosen]);
   async function start() {
     setBusy(true);
     setError(undefined);
@@ -113,7 +119,10 @@ export function MockSelection({
               type="radio"
               name="exam-timing"
               checked={timing === key}
-              onChange={() => setTiming(key as "timed" | "untimed")}
+              onChange={() => {
+                setTimingChosen(true);
+                setTiming(key as "timed" | "untimed");
+              }}
             />
             <span>
               <strong>{title}</strong>
@@ -123,8 +132,10 @@ export function MockSelection({
         ))}
       </div>
       <div className="notice-box">
-        Audio plays once per attempt. Hints, answer keys and the transcript open
-        after submission.
+        {timing === "timed"
+          ? "The recording plays once per attempt."
+          : "Pause, replay or seek freely, and return whenever you need."}{" "}
+        Answer keys open after submission.
       </div>
       {active && (
         <p className="resume-exam">
@@ -292,6 +303,7 @@ function ExamAudio({
   onPlaying: (playing: boolean) => void;
 }) {
   const audio = useRef<HTMLAudioElement>(null);
+  const untimed = attempt.timing === "untimed";
   const object = useRef("");
   const [started, setStarted] = useState(attempt.audio_started);
   const [loading, setLoading] = useState(false);
@@ -301,6 +313,7 @@ function ExamAudio({
   const [volume, setVolume] = useState(1);
   const [elapsed, setElapsed] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [speed, setSpeed] = useState(1);
   useEffect(
     () => () => {
       audio.current?.pause();
@@ -309,10 +322,15 @@ function ExamAudio({
     },
     [],
   );
-  async function play() {
+  async function play(restart = false) {
     setLoading(true);
     setError(undefined);
     try {
+      if (untimed && audio.current?.src) {
+        if (restart || ended) audio.current.currentTime = 0;
+        await audio.current.play();
+        return;
+      }
       const ticket = await post<{ url: string; ticket: string }>(
         `mock-attempts/${attempt.id}/start-audio/`,
       );
@@ -320,10 +338,12 @@ function ExamAudio({
       const blob = await apiBlob(ticket.url.replace("/api/v1/", ""), {
         headers: { "X-Exam-Audio": ticket.ticket },
       });
+      if (object.current) URL.revokeObjectURL(object.current);
       object.current = URL.createObjectURL(blob);
       if (audio.current) {
         audio.current.src = object.current;
         audio.current.volume = volume;
+        audio.current.playbackRate = speed;
         await audio.current.play();
       }
     } catch (e) {
@@ -333,13 +353,14 @@ function ExamAudio({
     }
   }
   return (
-    <section className="exam-audio">
+    <section className={`exam-audio${untimed ? " untimed-recording" : ""}`}>
       <audio
         ref={audio}
         preload="none"
         onTimeUpdate={(e) => setElapsed(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onPlay={() => {
+          setEnded(false);
           setPlaying(true);
           onPlaying(true);
         }}
@@ -354,7 +375,9 @@ function ExamAudio({
         }}
       />
       <div>
-        <span className="eyebrow">EXAM RECORDING · ONE PLAY</span>
+        <span className="eyebrow">
+          {untimed ? "RECORDING · FREE PLAYBACK" : "EXAM RECORDING · ONE PLAY"}
+        </span>
         <h3>
           {loading
             ? "Preparing audio…"
@@ -367,32 +390,96 @@ function ExamAudio({
                   : "Ready when you are"}
         </h3>
         <p>
-          {started
-            ? "Keep this page open while listening. Playback cannot be restarted for this attempt."
-            : "Start once when you are ready. Question navigation keeps the recording playing."}
+          {untimed
+            ? "Pause, replay, seek or return to this mock whenever you need."
+            : started
+              ? "Keep this page open while listening. Playback cannot be restarted for this attempt."
+              : "Start once when you are ready. Question navigation keeps the recording playing."}
         </p>
       </div>
       <div className="exam-audio-actions">
         <button
           className="button primary"
-          disabled={started || loading}
-          onClick={() => void play()}
+          disabled={loading || (!untimed && started)}
+          aria-label={
+            untimed
+              ? playing
+                ? "Pause recording"
+                : "Play recording"
+              : undefined
+          }
+          onClick={() => {
+            if (untimed && playing) audio.current?.pause();
+            else void play();
+          }}
         >
-          <Play size={16} />
-          {loading ? "Loading…" : "Start audio once"}
+          {untimed && playing ? <Pause size={16} /> : <Play size={16} />}
+          {loading
+            ? "Loading…"
+            : untimed
+              ? playing
+                ? "Pause"
+                : "Play"
+              : "Start audio once"}
         </button>
+        {untimed && (
+          <button
+            className="button secondary"
+            aria-label="Replay recording"
+            disabled={loading || !duration}
+            onClick={() => void play(true)}
+          >
+            <RotateCcw size={16} />
+          </button>
+        )}
         <span className="exam-recording-time">
           {Math.floor(elapsed / 60)}:
           {String(Math.floor(elapsed) % 60).padStart(2, "0")} /{" "}
           {Math.floor(duration / 60)}:
           {String(Math.floor(duration) % 60).padStart(2, "0")}
         </span>
-        <progress
-          aria-label="Recording progress"
-          max={duration || 1}
-          value={elapsed}
-        />
-        <label>
+        {untimed ? (
+          <input
+            className="recording-seek"
+            aria-label="Recording position"
+            type="range"
+            min="0"
+            max={duration || 1}
+            step=".1"
+            value={Math.min(elapsed, duration || 0)}
+            disabled={loading || !duration}
+            onChange={(e) => {
+              const position = Number(e.target.value);
+              if (audio.current) audio.current.currentTime = position;
+              setElapsed(position);
+            }}
+          />
+        ) : (
+          <progress
+            aria-label="Recording progress"
+            max={duration || 1}
+            value={elapsed}
+          />
+        )}
+        {untimed && (
+          <select
+            className="recording-speed"
+            aria-label="Playback speed"
+            value={speed}
+            onChange={(e) => {
+              const rate = Number(e.target.value);
+              setSpeed(rate);
+              if (audio.current) audio.current.playbackRate = rate;
+            }}
+          >
+            {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+              <option key={rate} value={rate}>
+                {rate}×
+              </option>
+            ))}
+          </select>
+        )}
+        <label className="recording-volume">
           <Volume2 size={18} />
           <input
             aria-label="Exam audio volume"
@@ -580,6 +667,7 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
   useEffect(() => {
     if (blocker.state !== "blocked") return;
     if (
+      initial.timing === "timed" &&
       audioPlaying &&
       !window.confirm(
         "Leaving stops the exam audio and it cannot be replayed for this attempt. Leave anyway?",
@@ -607,7 +695,10 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
   }, [blocker]);
   useEffect(() => {
     function warn(e: BeforeUnloadEvent) {
-      if (!finished.current && (save !== "Saved" || audioPlaying)) {
+      if (
+        !finished.current &&
+        (save !== "Saved" || (initial.timing === "timed" && audioPlaying))
+      ) {
         e.preventDefault();
         e.returnValue = "";
       }

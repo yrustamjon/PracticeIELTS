@@ -356,3 +356,45 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Acceptance: Empty/zero-length rows can be removed and restored; appending at audio end cannot create an impossible interval; precise inline and API validation identifies the field/row; unchanged word anchors survive row deletion/reordering; published versions remain immutable; regression checks and push.
 - Confirmed follow-up: Keep the user's edited interval and automatically trim adjacent sentence edges with a 50ms gap, preserving larger pauses. Commit completed time entry on Enter/blur, support Undo, and warn when an adjustment would erase a neighbor rather than generating invalid times.
 - Evidence (2026-10-25): 79 PostgreSQL backend tests including real ASR, 27 frontend tests, production typecheck/build and all 9 live-service browser workflows passed. Regressions cover the reported 454947ms/segment-50 case, row removal/Undo, preserved word anchors/publications, partial keyboard input, adjacent boundaries, timing-only Undo preserving text and persisted corrections after reload. Django check, migration drift, strict OpenAPI, Ruff and diff checks passed; screenshots reviewed.
+
+## Content review / CONTENT-01 — Audit Cambridge 10 Downloads sheets and prepare PDFs
+- Status: Completed
+- Request: Inspect the latest Cambridge 10 sheets in Downloads for correctness before preparing PDFs.
+- Acceptance: Compare all five Markdown sheets against the user's local book; identify mismatched sections and missing keys/figures; preserve originals; prepare source-faithful Listening question and separate answer-key PDFs outside Git. No application import or publication.
+- Verification: Review all 16 section mappings; reopen generated PDFs and verify page counts, original page/image contents, dimensions, ordering and separate key pages; record provenance and next action.
+- Evidence (2026-10-25): All five recent Markdown sheets contain material differences from the local book; no sheet is approved for import. Prepared six private PDFs in `backend/media/cambridge_documents/Cambridge_10`: 30-page combined Listening questions, four per-test question PDFs (7/8/7/8 pages), and a separate four-page Listening key. All 64 output pages across the six PDFs render pixel-identically to their 34 unique source pages; PDF contents/images/dimensions, Test/Part bookmarks and all eight ZIP members verified. Originals are hash-verified unchanged. Scanned source limitations and all 16 section discrepancies are documented in the output folder. No application code, database, audio, transcripts or publication state changed.
+
+## Content import / CONTENT-02 — Cambridge 10 Test 1, Parts 1–4
+- Status: Completed
+- Request: Import the four Parts using the verified source PDF and keys; limit writes to question documents, question sets, questions/options/keys and their audit records.
+- Acceptance: Four private Part PDFs and four unpublished question sets with 40 numbered questions, source keys, word limits and reviewed field geometry; preserve existing materials/publications and all unrelated records. Record any existing scoring limitation without changing application behavior.
+- Verification: Serializer validation; PDF image/geometry checks; persisted readback against prepared data; owner/student authorization checks; transaction rollback on failure; repeat execution must not duplicate records.
+- Evidence (2026-10-25): Imported four draft sets (IDs 2–5), documents 4–7, into existing materials 6–9; ten questions per Part, 40 total. All prompts/options/keys/limits/rectangles read back equal to prepared source-reviewed data. All seven PDF page/field previews reviewed; 29 owner/student/anonymous and isolated-page checks passed. A SQL write guard restricted writes to the six question/document/audit tables, inside one atomic transaction; original material rows remained identical. Repeat import created zero rows/writes and retained the same IDs. Django check passed on the configured local SQLite database. Private payloads/PDFs/receipt are ignored under `backend/media/cambridge_documents/Cambridge_10/Test_1`. Publication remains pending: questions 11–12 preserve source either-order/distinct-group metadata, but the current independent-question scorer does not enforce distinctness. Default exam timing also needs editorial review. No product code or unrelated content changed.
+
+## Mock / UX-09 — Free untimed playback and recoverable Full assembly
+- Status: Completed
+- Request: No-time-limit Mock must allow replay, seeking and returning without locking playback; published Parts must produce a usable Full test.
+- Acceptance: Reusable owned playback for untimed attempts; pause/replay/seek/speed controls and saved-answer resume; untimed Parts/Full do not lock one another; timed attempts retain restrictions across sibling routes; retry queued assembly safely and restore the current stuck Full build without modifying its source Parts.
+- Verification: Reproduce failures before fixes; server/frontend regressions; existing suites/build; real-browser return/replay and Full workflow; inspect current Full readiness.
+- Evidence (2026-10-25): Server regressions reproduced six original failures, then passed with timed-only locking, renewable untimed tickets and queued retry. Review additionally found history/restart bypasses and redundant ready rebuilds; all reproduced and fixed. Regular backend suite passed 86 tests (one opt-in speech test skipped). Client suite/build passed; targeted browser return/replay/seek/speed/answer-resume passed. Replaced the outdated idle local worker, which registered only the old task, with `practiceielts-current@localhost`; retried the published Cambridge 10 Test 1 build. Full material 92 is ready/published with 40 questions, preserving source Part publications. See STATUS for the separate optional speech-fixture environment failure.
+
+## Practice / UX-10 — Fully visible editor with page scrolling
+- Status: Completed
+- Request: Show the full Listen and write editor/feedback without an internal scroll area; scroll the whole page when needed.
+- Acceptance: Editor expands with its content; no clipping or nested editor scrollbar; normal document scrolling; exercise pagination and responsive controls still work.
+- Verification: Browser geometry with long feedback and small/large viewports; relevant frontend suite/build.
+- Evidence (2026-10-25): Browser RED measured 1590px content clipped into a 174px editor. Removed nested editor height/scroll caps, retained exercise pagination, and made textarea fit its text and viewport changes. Targeted browser GREEN verified long feedback, textarea visibility after 1280→390px resize, document scrolling and saved navigation. Final client suite passed 34 tests; production build passed.
+
+## Admin / UX-11 — Stable layout across hierarchy and Part editing
+- Status: Completed
+- Request: Keep the same page width and book hierarchy/sidebar appearance when opening a Part or navigating to another admin level.
+- Acceptance: Consistent header/workflow, sidebar width/position and content alignment across volume/test/Part pages; retain sibling navigation and active path; no new clipping or narrow editor cap.
+- Verification: Desktop/mobile browser navigation geometry and sibling visibility regressions; existing client checks.
+- Evidence (2026-10-25): RED reproduced a 252px heading shift on entering Part 1. Grouped editors now share the volume/test header, workflow and sidebar/content grid; removed the 1000px editor cap and navigation-dependent sibling filtering. The approved-book browser flow passed with geometry equality across six hierarchy/Part views at 1600px, sibling book/volume/test visibility, full editor width and 390px overflow checks. Final client tests/build and diff check passed. Concurrent user changes were preserved.
+
+## Practice / EASY-TIMING-01 — Admin timing corrections during Easy Practice
+- Status: Completed
+- Request: Let an administrator change the current Easy exercise's playback start/end directly while practising.
+- Scope: Admin/staff only; authenticated server checks; editable seconds with preview; persisted Easy timing revisions pinned by sessions; keep published transcripts, other difficulties, existing student sessions and unrelated user edits intact.
+- Verification: Permission and mode rejection, exact chunk persistence, input/boundary validation, revision conflicts, student history/resume, component interaction and production build.
+- Evidence (2026-10-25, local SQLite): 109 passed, 1 skipped; 35 passed; 1 live browser workflow passed; production typecheck/build, Django check, migration drift check, strict OpenAPI, Ruff and diff checks passed. Migration 0006 is applied locally.

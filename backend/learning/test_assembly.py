@@ -52,10 +52,10 @@ def queue_assembly(test_id, retry=False):
             return
         if len(signature) != 4 or any(not row[1] for row in signature):
             return
-        if test.assembly_state in ("queued", "running") or (
-            not retry
-            and test.assembly_state == "ready"
-            and signature == test.assembly_signature
+        if (
+            test.assembly_state == "running"
+            or (test.assembly_state == "queued" and not retry)
+            or (test.assembly_state == "ready" and signature == test.assembly_signature)
         ):
             return
         test.assembly_state = "queued"

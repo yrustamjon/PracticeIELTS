@@ -155,6 +155,21 @@ class Segment(models.Model):
         ]
 
 
+class PracticeTimingRevision(models.Model):
+    """Append-only Easy playback corrections, separate from transcript content."""
+
+    version = models.ForeignKey(
+        TranscriptVersion, on_delete=models.PROTECT, related_name="timing_revisions"
+    )
+    grouping_version = models.PositiveSmallIntegerField(default=1)
+    overrides = models.JSONField(default=dict)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-id"]
+
+
 class PracticeSession(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     material = models.ForeignKey(Material, on_delete=models.PROTECT)
@@ -164,6 +179,13 @@ class PracticeSession(models.Model):
     )
     position = models.PositiveIntegerField(default=0)
     grouping_version = models.PositiveSmallIntegerField(default=1)
+    timing_revision = models.ForeignKey(
+        PracticeTimingRevision,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="sessions",
+    )
     drafts = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -178,8 +200,25 @@ class PracticeSession(models.Model):
                     "difficulty",
                     "grouping_version",
                 ],
-                name="unique_practice_session",
-            )
+                condition=Q(timing_revision__isnull=True),
+                name="unique_base_practice_session",
+            ),
+            models.UniqueConstraint(
+                fields=[
+                    "user",
+                    "material",
+                    "version",
+                    "difficulty",
+                    "grouping_version",
+                    "timing_revision",
+                ],
+                condition=Q(timing_revision__isnull=False),
+                name="unique_corrected_practice_session",
+            ),
+            models.CheckConstraint(
+                condition=Q(timing_revision__isnull=True) | Q(difficulty="easy"),
+                name="timing_revision_easy_only",
+            ),
         ]
 
 
