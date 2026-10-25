@@ -71,12 +71,7 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     fullPage: true,
   });
   await page.getByRole("link", { name: "Admin Panel", exact: true }).click();
-  await page
-    .getByRole("link", {
-      name: "Independent materials & collections",
-      exact: true,
-    })
-    .click();
+  await page.goto("/admin/materials");
   await page
     .getByRole("button", { name: "Add collection", exact: true })
     .click();
@@ -511,12 +506,7 @@ test("audio only automatically becomes published Practice without manual transcr
   test.setTimeout(180000);
   await login(page, teacher);
   await page.getByRole("link", { name: "Admin Panel", exact: true }).click();
-  await page
-    .getByRole("link", {
-      name: "Independent materials & collections",
-      exact: true,
-    })
-    .click();
+  await page.goto("/admin/materials");
   await page
     .getByRole("button", { name: "Add collection", exact: true })
     .click();
@@ -1212,31 +1202,63 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
   await login(page, teacher);
   const token = (await (await signedIn).json()).access;
   await page.goto("/admin");
-  await page
-    .getByRole("button", { name: "Add source collection", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Add book", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Name", exact: true })
     .fill(`Review collection ${stamp}`);
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(
     page.getByRole("heading", {
-      name: `Review collection ${stamp} · Tests`,
+      name: `Review collection ${stamp}`,
       exact: true,
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Add book", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "New test", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Add volume", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Name", exact: true })
     .fill(`Review book ${stamp}`);
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(
-    page.getByRole("heading", {
-      name: `Review book ${stamp} · Tests`,
-      exact: true,
-    }),
+    page.getByRole("heading", { name: `Review book ${stamp}`, exact: true }),
   ).toBeVisible();
   const category = new URL(page.url()).searchParams.get("category")!;
+  await page
+    .getByRole("navigation", { name: "Book hierarchy", exact: true })
+    .getByRole("button", { name: `Review collection ${stamp}`, exact: true })
+    .click();
+  await expect(
+    page.locator(".studio-main .catalog-card").filter({
+      has: page.getByRole("heading", {
+        name: `Review book ${stamp}`,
+        exact: true,
+      }),
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "New test", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", {
+      name: "Independent materials & collections",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: "test-results/approved-book-volumes.png",
+    fullPage: true,
+  });
+  await page
+    .locator(".studio-main .catalog-card")
+    .filter({
+      has: page.getByRole("heading", {
+        name: `Review book ${stamp}`,
+        exact: true,
+      }),
+    })
+    .click();
   await page.getByRole("button", { name: "New test", exact: true }).click();
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("Test 1");
   await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -1244,12 +1266,41 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
     page.getByRole("heading", { name: "Test 1", exact: true }),
   ).toBeVisible();
   const testId = new URL(page.url()).searchParams.get("test")!;
+  const hierarchy = page.getByRole("navigation", {
+    name: "Book hierarchy",
+    exact: true,
+  });
+  await expect(
+    hierarchy.getByRole("button", { name: /^(Open|Add) Part [1-4], Test 1$/ }),
+  ).toHaveCount(4);
+  await expect(
+    hierarchy.getByRole("button", { name: /^Test 1/ }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Add Part", exact: true })
     .first()
     .click();
   await expect(page).toHaveURL(/\/admin\/\d+/);
   const firstMaterial = Number(new URL(page.url()).pathname.split("/").at(-1));
+  await expect(
+    page
+      .getByRole("navigation", { name: "Book hierarchy", exact: true })
+      .getByRole("button", { name: "Open Part 1, Test 1", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await page
+    .getByRole("navigation", { name: "Book hierarchy", exact: true })
+    .getByRole("button", { name: "Add Part 2, Test 1", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Test 1 · Part 2", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Book hierarchy", exact: true })
+    .getByRole("button", { name: "Open Part 1, Test 1", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Test 1 · Part 1", exact: true }),
+  ).toBeVisible();
   await page
     .getByLabel("Content source", { exact: true })
     .fill("Original speech for hierarchy review");
@@ -1400,6 +1451,11 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
   ).toBeVisible({ timeout: 60000 });
   await expect(page.locator(".full-test-banner")).toContainText("4 / 4 ready");
   await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(
+    page
+      .getByRole("navigation", { name: "Book hierarchy", exact: true })
+      .getByRole("button", { name: "Open Part 4, Test 1", exact: true }),
+  ).toBeInViewport();
   await page.screenshot({
     path: "test-results/approved-admin-studio.png",
     fullPage: true,
@@ -1575,4 +1631,142 @@ test("Practice keeps long exercise lists paginated and saves answers across page
   await page.getByRole("button", { name: /^Medium/ }).click();
   await expect(page.locator(".expected-word-count")).toHaveCount(0);
   await expect(page.locator(".practice-exercise-list button")).toHaveCount(8);
+});
+
+test("review timing edits adjust adjacent sentences and save without losing text", async ({
+  page,
+}) => {
+  const material = fixture("create_long_practice").toString().trim();
+  await login(page, teacher);
+  await page.goto(`/admin/${material}?step=material-review`);
+  await expect(
+    page.getByLabel("Segment 1 text", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByText("Manual transcript entry (advanced recovery)", { exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Add sentence manually", exact: true }),
+  ).toBeDisabled();
+  const lastText = await page
+    .getByLabel("Segment 30 text", { exact: true })
+    .inputValue();
+  await page
+    .getByRole("button", { name: "Remove segment 30", exact: true })
+    .click();
+  await expect(
+    page.locator(".segment-editor-list .segment-editor"),
+  ).toHaveCount(29);
+  await page.getByRole("button", { name: "Undo remove", exact: true }).click();
+  await expect(
+    page.locator(".segment-editor-list .segment-editor"),
+  ).toHaveCount(30);
+  await expect(page.getByLabel("Segment 30 text", { exact: true })).toHaveValue(
+    lastText,
+  );
+  const originalStart = Math.round(
+    Number(
+      await page.getByLabel("Segment 2 start", { exact: true }).inputValue(),
+    ) * 1000,
+  );
+  const end = Math.round(
+    Number(
+      await page.getByLabel("Segment 2 end", { exact: true }).inputValue(),
+    ) * 1000,
+  );
+  await page
+    .locator(".segment-editor-list .segment-editor")
+    .nth(1)
+    .locator(".advanced-timing > summary")
+    .click();
+  const edited = originalStart - 100;
+  const previousEnd = await page
+    .getByLabel("Segment 1 end", { exact: true })
+    .inputValue();
+  await page.getByLabel("Segment 2 start", { exact: true }).fill("");
+  await page
+    .getByLabel("Segment 2 start", { exact: true })
+    .pressSequentially((edited / 1000).toFixed(3));
+  await expect(page.getByLabel("Segment 1 end", { exact: true })).toHaveValue(
+    previousEnd,
+  );
+  await page.getByLabel("Segment 2 start", { exact: true }).press("Enter");
+  expect(
+    Math.round(
+      Number(
+        await page.getByLabel("Segment 1 end", { exact: true }).inputValue(),
+      ) * 1000,
+    ),
+  ).toBe(edited - 50);
+  expect(
+    Math.round(
+      Number(
+        await page.getByLabel("Segment 3 start", { exact: true }).inputValue(),
+      ) * 1000,
+    ),
+  ).toBe(end + 50);
+  await expect(page.locator(".timing-adjustment-note")).toContainText(
+    "Sentence 1 end",
+  );
+  const corrected = (
+    await page.getByLabel("Segment 5 text", { exact: true }).inputValue()
+  ).toLowerCase();
+  await page.getByLabel("Segment 5 text", { exact: true }).fill(corrected);
+  await page
+    .getByRole("button", { name: "Undo timing edit", exact: true })
+    .click();
+  expect(
+    Math.round(
+      Number(
+        await page.getByLabel("Segment 2 start", { exact: true }).inputValue(),
+      ) * 1000,
+    ),
+  ).toBe(originalStart);
+  await expect(page.getByLabel("Segment 5 text", { exact: true })).toHaveValue(
+    corrected,
+  );
+  await page
+    .getByLabel("Segment 2 start", { exact: true })
+    .fill((edited / 1000).toFixed(3));
+  await page.getByLabel("Segment 2 start", { exact: true }).press("Tab");
+  await page
+    .getByRole("button", { name: "Save transcript corrections", exact: true })
+    .click();
+  await expect(
+    page.getByText("Transcript corrections saved as a new version.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Segment 5 text", { exact: true })).toHaveValue(
+    corrected,
+  );
+  expect(
+    Math.round(
+      Number(
+        await page.getByLabel("Segment 2 start", { exact: true }).inputValue(),
+      ) * 1000,
+    ),
+  ).toBe(edited);
+  expect(
+    Math.round(
+      Number(
+        await page.getByLabel("Segment 1 end", { exact: true }).inputValue(),
+      ) * 1000,
+    ),
+  ).toBe(edited - 50);
+  expect(
+    Math.round(
+      Number(
+        await page.getByLabel("Segment 3 start", { exact: true }).inputValue(),
+      ) * 1000,
+    ),
+  ).toBe(end + 50);
+  await page
+    .getByLabel("Segment 2 text", { exact: true })
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: "test-results/review-neighbor-timing.png",
+    fullPage: true,
+  });
 });

@@ -65,3 +65,15 @@ PUT materials/<id>/questions/ accepts presentation=html and sections:[{part,html
 - Saving questions on a linked Part assigns their part number from the test card. Such sets accept consecutive numbering from 1 or the IELTS start for that Part (11/21/31). Existing independent full papers still require numbering from 1.
 - `GET materials/?standalone=true` excludes linked Part and Full records for independent-material views. Material metadata adds `test_part:{test,number}|null` and `full_test:id|null`; the UI uses these to return to the enclosing test.
 - Active Mock study guards cover the assembled material and every sibling Part. Another Part/Full Mock in the same test cannot start until the active attempt is completed. Existing answer/ticket/private-page rules remain unchanged.
+
+### Admin hierarchy correction
+
+A test's `category` must be a leaf volume inside a book (`parent` is set and the category has no children). `POST listening-tests/` and category changes through PATCH validate this server-side. Opening a root book is a volume-list operation, not test creation.
+
+Existing root-level tests remain readable and their Part/history endpoints remain valid. Owners can PATCH such a test to an existing volume. This moves the classification of its linked Part/Full materials together; material IDs and pinned transcript/question/session versions do not change. New creation and moves to root/nonleaf book categories are rejected.
+
+### Transcript review validation
+
+`PUT materials/<id>/transcript/` accepts optional existing segment `id` along with `text`, `speaker`, `start_ms`, and `end_ms`. Times must be integer milliseconds, nonnegative, positive-length, nonoverlapping and within the current audio. A 400 response under `segments` names the one-based row and specific text/timing correction; empty sentences must be removed or completed.
+
+Existing IDs are resolved only against the prior version of this material and the same audio. Older clients without IDs can preserve word anchors by an unchanged interval. Removing/reordering rows does not change the identity of other sentences; changed timing invalidates obsolete anchors. The endpoint saves a new version and does not mutate published transcripts. Adjacent 50ms-gap adjustments are explicit client-side review edits submitted together, never a silent server modification.

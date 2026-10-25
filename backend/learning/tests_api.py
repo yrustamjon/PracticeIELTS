@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
-from .models import ListeningTest, Material, TestPart
+from .models import AuditLog, ListeningTest, Material, TestPart
 from .views import EditorOrReadOnly
 
 
@@ -39,6 +39,13 @@ class ListeningTestSerializer(serializers.ModelSerializer):
             "assembly_error",
             "full_source",
         ]
+
+    def validate_category(self, value):
+        if value.parent_id is None or value.children.exists():
+            raise serializers.ValidationError(
+                "Choose a volume inside a book, for example Cambridge → Cambridge 10, before creating a test."
+            )
+        return value
 
     def summary(self, m):
         return {
@@ -126,8 +133,19 @@ class ListeningTestViewSet(viewsets.ModelViewSet):
         return obj
 
     def perform_update(self, serializer):
-        self.editable()
-        serializer.save()
+        original_category = self.editable().category_id
+        with transaction.atomic():
+            updated = serializer.save()
+            if original_category != updated.category_id:
+                ids = list(updated.parts.values_list("material_id", flat=True))
+                if updated.full_material_id:
+                    ids.append(updated.full_material_id)
+                Material.objects.filter(pk__in=ids).update(category=updated.category)
+            AuditLog.objects.create(
+                actor=self.request.user,
+                material=updated.full_material,
+                action="test.update",
+            )
 
     @extend_schema(request=PartInput, responses=ListeningTestSerializer)
     @action(detail=True, methods=["post"])

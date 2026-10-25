@@ -345,34 +345,22 @@ class MaterialViewSet(viewsets.ModelViewSet):
             if previous_version and previous_version.audio_id == audio.pk
             else []
         )
+        from .services.transcript import validate_segment
+
+        old_by_id = {s.pk: s for s in old_segments}
+        old_by_interval = {(s.start_ms, s.end_ms): s for s in old_segments}
         clean = []
         last = 0
         for index, segment in enumerate(data):
-            try:
-                start, end = segment["start_ms"], segment["end_ms"]
-                text = segment["text"].strip()
-                speaker = segment.get("speaker", "").strip()
-                if (
-                    isinstance(start, bool)
-                    or not isinstance(start, int)
-                    or not isinstance(end, int)
-                    or start < last
-                    or end <= start
-                    or end > audio.duration_ms
-                    or not text
-                    or len(text) > 10000
-                    or len(speaker) > 100
-                ):
-                    raise ValueError()
-            except (KeyError, ValueError, AttributeError, TypeError):
-                raise ValidationError(
-                    {
-                        "segments": f"Segment {index + 1}: require text and non-overlapping integer timestamps within {audio.duration_ms} ms."
-                    }
-                )
+            text, speaker, start, end = validate_segment(
+                segment, index, last, audio.duration_ms
+            )
+            supplied_id = segment.get("id")
+            old = old_by_id.get(supplied_id) if type(supplied_id) is int else None
+            if old is None:
+                old = old_by_interval.get((start, end))
             timing_fields = {}
-            if index < len(old_segments) and old_segments[index].words:
-                old = old_segments[index]
+            if old is not None and old.words:
                 if old.text == text and old.start_ms == start and old.end_ms == end:
                     timing_fields = {
                         "words": old.words,

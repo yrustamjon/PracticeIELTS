@@ -15,6 +15,7 @@ export type Category = {
   material_count: number;
 };
 export type Segment = {
+  id?: number;
   text: string;
   speaker: string;
   start_ms: number;

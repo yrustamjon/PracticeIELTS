@@ -72,7 +72,7 @@ def add_part(book, n, presentation="text", publish=True):
         text="The door is open.",
         start_ms=0,
         end_ms=900,
-        words=[{"text": "door", "start_ms": 200, "end_ms": 400}],
+        words=[{"word": "door", "start_ms": 200, "end_ms": 400}],
     )
     doc = None
     if presentation == "pdf":
@@ -434,3 +434,63 @@ def test_assembly_error_preserves_previous_publication_and_has_plain_editor_mess
     assert test.full_material.published_version.audio.file.storage.exists(
         original_audio
     )
+
+
+def test_new_tests_require_a_volume_and_cannot_be_created_at_book_level(book):
+    teacher, _, test = book
+    c = client(teacher)
+    root = test.category.parent
+    response = c.post(
+        "/api/v1/listening-tests/", {"title": "Wrong level", "category": root.pk}
+    )
+    assert response.status_code == 400
+    assert "volume" in str(response.data["category"]).lower()
+    assert not ListeningTest.objects.filter(title="Wrong level").exists()
+    created = c.post(
+        "/api/v1/listening-tests/", {"title": "Test 2", "category": test.category_id}
+    )
+    assert created.status_code == 201
+    assert created.data["category"] == test.category_id
+    assert (
+        c.patch(
+            f"/api/v1/listening-tests/{created.data['id']}/", {"category": root.pk}
+        ).status_code
+        == 400
+    )
+
+
+def test_existing_root_test_can_move_to_a_volume_without_losing_part_or_session_history(
+    book,
+):
+    teacher, student, target = book
+    legacy = ListeningTest.objects.create(
+        title="Existing root test", category=target.category.parent, owner=teacher
+    )
+    material = add_part((teacher, student, legacy), 1)
+    c = client(student)
+    session = c.post(
+        "/api/v1/sessions/", {"material": material.pk, "difficulty": "easy"}
+    )
+    assert session.status_code == 200
+    sid = session.data["id"]
+    c.patch(
+        f"/api/v1/sessions/{sid}/",
+        {"draft": "Saved before moving", "position": 0},
+        format="json",
+    )
+    version = material.published_version_id
+    part_id = legacy.parts.get().pk
+    response = client(teacher).patch(
+        f"/api/v1/listening-tests/{legacy.pk}/", {"category": target.category_id}
+    )
+    assert response.status_code == 200
+    material.refresh_from_db()
+    legacy.refresh_from_db()
+    assert material.category_id == target.category_id
+    assert legacy.category_id == target.category_id
+    assert legacy.parts.get().pk == part_id
+    assert material.published_version_id == version
+    saved = c.get(f"/api/v1/sessions/{sid}/")
+    assert saved.status_code == 200
+    assert saved.data["drafts"]["0"] == "Saved before moving"
+    assert saved.data["version"] == version

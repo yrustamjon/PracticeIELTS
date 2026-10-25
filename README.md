@@ -175,3 +175,22 @@ celery -A config worker --loglevel=info
 ```
 
 This registers the new `learning.tasks.assemble_listening_test` task. No new npm dependencies were added.
+
+## One admin workflow
+
+Use **Book → Volume → Test → Parts**:
+
+1. In Books, add/open **Cambridge**.
+2. Inside Cambridge, add/open a volume such as **Cambridge 10**. This page shows volumes and has **Add volume**.
+3. Inside Cambridge 10, create/open **Test 1**. Only a volume offers **New test**.
+4. Inside Test 1, open **Part 1–4** (or the Full recording) to prepare its content.
+
+The left hierarchy follows the selected book/volume/test and keeps Part 1–4 visible while editing. Expand/collapse its branches or use search to find another book/test. Breadcrumbs and Back return to the preceding stage. There is one contextual creation action; the main admin no longer links to a separate independent-materials/collections workflow. Existing recordings can still be attached from a Part card.
+
+Existing tests previously saved directly under a book remain accessible in the hierarchy. Open that test and choose its volume using **Move test to volume**; material IDs, publications and student history are preserved. New tests cannot be created at book level. This correction needs no new database migration.
+
+## Editing transcript timing
+
+In Review, finish a start/end time with Enter or by leaving its field. Your chosen interval stays fixed; overlapping/too-close neighboring edges adjust to leave 0.05 seconds. Existing larger pauses stay intact. If there is insufficient room for a neighboring sentence, the editor explains which boundary needs correction. **Undo timing edit** restores the last change without discarding text corrections.
+
+Empty sentences can be removed and restored with **Undo remove**. Manual entry is disabled when the final sentence already reaches the recording's end. Inline errors identify invalid text/times before saving; corrected transcripts save as new versions. Changing boundaries requires timing review for the affected sentences; unchanged sentences retain their existing word anchors, including after a row is removed.

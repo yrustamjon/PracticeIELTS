@@ -1,17 +1,14 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   BookOpen,
-  Check,
   ChevronRight,
   FileText,
-  FolderOpen,
   Headphones,
   Plus,
   Search,
-  Settings,
   X,
 } from "lucide-react";
 import {
@@ -26,34 +23,29 @@ import {
 import { useAuth } from "../stores/auth";
 import { Loading, ErrorState, Empty, PageTitle } from "../components/ui";
 import { CatalogBreadcrumbs, Pagination } from "./Catalog";
+import { BookHierarchy, StudioFlow } from "./StudioHierarchy";
 
+type Creation = { kind: "book" | "volume" | "test"; parent: number | null };
 export function TestStudio() {
   const editor = useAuth((s) => s.user?.can_edit),
     cache = useQueryClient(),
     navigate = useNavigate();
   const [params, setParams] = useSearchParams(),
-    category = Number(params.get("category")) || null,
-    testId = Number(params.get("test")) || null;
-  const [search, setSearch] = useState(""),
-    [page, setPage] = useState(1),
-    [dialog, setDialog] = useState<"source" | "book" | "test" | null>(null),
+    requestedCategory = Number(params.get("category")) || null,
+    testId = Number(params.get("test")) || null,
+    page = Math.max(1, Number(params.get("page")) || 1),
+    term = params.get("search") || "";
+  const [search, setSearch] = useState(term),
+    [dialog, setDialog] = useState<Creation | null>(null),
     [name, setName] = useState(""),
-    [parent, setParent] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(),
     [attach, setAttach] = useState<number | null>(null),
-    [attachMaterial, setAttachMaterial] = useState("");
+    [attachMaterial, setAttachMaterial] = useState(""),
+    [moveVolume, setMoveVolume] = useState("");
   const categories = useQuery({
     queryKey: ["categories", "all"],
     queryFn: () => allPages<Category>("categories/?page_size=100"),
-    enabled: !!editor,
-  });
-  const tests = useQuery({
-    queryKey: ["studio-tests", category, page],
-    queryFn: () =>
-      api<Page<ListeningTest>>(
-        `listening-tests/?owned=true&category=${category || ""}&page=${page}&page_size=6`,
-      ),
     enabled: !!editor,
   });
   const test = useQuery({
@@ -66,6 +58,24 @@ export function TestStudio() {
         ? 2000
         : false,
   });
+  const t = test.data,
+    category = t?.category || requestedCategory,
+    selected = categories.data?.find((c) => c.id === category),
+    children = (categories.data || []).filter(
+      (c) => (c.parent || null) === category,
+    ),
+    isBook = !!selected && !selected.parent,
+    showVolumes = isBook || !!children.length,
+    isVolume = !!selected && !!selected.parent && !children.length;
+  const stage = testId ? 4 : !category ? 1 : showVolumes ? 2 : 3;
+  const tests = useQuery({
+    queryKey: ["studio-tests", category, page, term],
+    queryFn: () =>
+      api<Page<ListeningTest>>(
+        `listening-tests/?owned=true&category=${category}&page=${page}&page_size=6&search=${encodeURIComponent(term)}`,
+      ),
+    enabled: !!editor && isVolume && !testId,
+  });
   const independent = useQuery({
     queryKey: ["studio-attach-materials"],
     queryFn: () =>
@@ -73,8 +83,13 @@ export function TestStudio() {
     enabled: !!attach,
   });
   useEffect(() => {
-    setPage(1);
-  }, [category]);
+    setSearch(term);
+  }, [term]);
+  useEffect(() => {
+    setDialog(null);
+    setAttach(null);
+    setError(undefined);
+  }, [category, testId]);
   useEffect(() => {
     if (!dialog && !attach) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -86,7 +101,7 @@ export function TestStudio() {
       if (e.key === "Tab") {
         const nodes = Array.from(
           document.querySelectorAll<HTMLElement>(
-            ".studio-modal button:not(:disabled),.studio-modal input,.studio-modal select,.studio-modal a",
+            ".studio-modal button:not(:disabled),.studio-modal input,.studio-modal select",
           ),
         );
         const first = nodes[0],
@@ -113,41 +128,46 @@ export function TestStudio() {
         description="Your account cannot add or edit learning materials."
       />
     );
-  function choose(c: number | null, t: number | null = null) {
+  function choose(c: number | null, id: number | null = null) {
     const p = new URLSearchParams();
     if (c) p.set("category", String(c));
-    if (t) p.set("test", String(t));
+    if (id) p.set("test", String(id));
     setParams(p);
     setError(undefined);
   }
-  function open(type: "source" | "book" | "test") {
+  function open(kind: "book" | "volume" | "test") {
     setName("");
-    setParent(category ? String(category) : "");
-    setDialog(type);
+    setDialog({ kind, parent: kind === "book" ? null : category });
     setError(undefined);
+  }
+  function updateTest(next: ListeningTest) {
+    cache.setQueryData(["studio-test", next.id], next);
+    void cache.invalidateQueries({ queryKey: ["studio-tree-tests"] });
+    void cache.invalidateQueries({ queryKey: ["studio-tests"] });
   }
   async function create(e: FormEvent) {
     e.preventDefault();
+    if (!dialog) return;
     setBusy(true);
     setError(undefined);
     try {
-      if (dialog === "test") {
-        const t = await post<ListeningTest>("listening-tests/", {
+      if (dialog.kind === "test") {
+        const next = await post<ListeningTest>("listening-tests/", {
           title: name.trim(),
-          category: Number(parent),
+          category: dialog.parent,
         });
+        updateTest(next);
         setDialog(null);
-        choose(t.category, t.id);
+        choose(next.category, next.id);
       } else {
-        const c = await post<Category>("categories/", {
+        const next = await post<Category>("categories/", {
           name: name.trim(),
-          parent: dialog === "source" ? null : Number(parent) || null,
+          parent: dialog.parent,
         });
-        setDialog(null);
-        choose(c.id);
         await cache.invalidateQueries({ queryKey: ["categories"] });
+        setDialog(null);
+        choose(next.id);
       }
-      await cache.invalidateQueries({ queryKey: ["studio-tests"] });
     } catch (e) {
       setError(e);
     } finally {
@@ -159,14 +179,15 @@ export function TestStudio() {
     setBusy(true);
     setError(undefined);
     try {
-      const t = await post<ListeningTest>(`listening-tests/${testId}/parts/`, {
-        number,
-        ...(material ? { material } : {}),
-      });
-      cache.setQueryData(["studio-test", testId], t);
+      const next = await post<ListeningTest>(
+        `listening-tests/${testId}/parts/`,
+        { number, ...(material ? { material } : {}) },
+      );
+      updateTest(next);
       setAttach(null);
-      const p = t.parts.find((p) => p.number === number);
-      if (p) navigate(`/admin/${p.id}?test=${t.id}&category=${t.category}`);
+      const p = next.parts.find((p) => p.number === number);
+      if (p)
+        navigate(`/admin/${p.id}?test=${next.id}&category=${next.category}`);
     } catch (e) {
       setError(e);
     } finally {
@@ -178,13 +199,15 @@ export function TestStudio() {
     setBusy(true);
     setError(undefined);
     try {
-      const t = await post<ListeningTest>(
+      const next = await post<ListeningTest>(
         `listening-tests/${testId}/full-recording/`,
         {},
       );
-      cache.setQueryData(["studio-test", testId], t);
-      if (t.full)
-        navigate(`/admin/${t.full.id}?test=${t.id}&category=${t.category}`);
+      updateTest(next);
+      if (next.full)
+        navigate(
+          `/admin/${next.full.id}?test=${next.id}&category=${next.category}`,
+        );
     } catch (e) {
       setError(e);
     } finally {
@@ -195,10 +218,10 @@ export function TestStudio() {
     setBusy(true);
     setError(undefined);
     try {
-      const t = await post<ListeningTest>(
+      const next = await post<ListeningTest>(
         `listening-tests/${testId}/assemble/`,
       );
-      cache.setQueryData(["studio-test", testId], t);
+      updateTest(next);
       await test.refetch();
     } catch (e) {
       setError(e);
@@ -206,123 +229,113 @@ export function TestStudio() {
       setBusy(false);
     }
   }
-  const selected = categories.data?.find((c) => c.id === category),
-    t = test.data,
-    ready = t?.parts.filter((p) => p.status === "published").length || 0;
-  function tree(parentId: number | null, depth = 0): ReactNode {
-    if (depth > 12) return null;
-    return (categories.data || [])
-      .filter((c) => (c.parent || null) === parentId)
-      .map((c) => (
-        <div className="studio-tree-item" key={c.id}>
-          <button
-            className={category === c.id ? "selected" : ""}
-            style={{ paddingLeft: 12 + depth * 12 }}
-            onClick={() => choose(c.id)}
-          >
-            {c.parent ? <BookOpen size={15} /> : <FolderOpen size={15} />}
-            <span>{c.name}</span>
-          </button>
-          {tree(c.id, depth + 1)}
-        </div>
-      ));
+  async function moveTest(e: FormEvent) {
+    e.preventDefault();
+    if (!t || !moveVolume) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const next = await api<ListeningTest>(`listening-tests/${t.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ category: Number(moveVolume) }),
+      });
+      updateTest(next);
+      choose(next.category, next.id);
+      await cache.invalidateQueries({ queryKey: ["categories"] });
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
   }
+  function paginate(n: number) {
+    const p = new URLSearchParams(params);
+    p.set("page", String(n));
+    setParams(p);
+  }
+  function find(e: FormEvent) {
+    e.preventDefault();
+    const p = new URLSearchParams(params);
+    search.trim() ? p.set("search", search.trim()) : p.delete("search");
+    p.delete("page");
+    setParams(p);
+  }
+  const ready = t?.parts.filter((p) => p.status === "published").length || 0,
+    kind = !category ? "book" : showVolumes ? "volume" : "test",
+    noun = !category ? "Books" : showVolumes ? "Volumes" : "Tests",
+    listing = children.filter((c) =>
+      c.name.toLowerCase().includes(term.toLowerCase()),
+    ),
+    createLabel =
+      kind === "book"
+        ? "Add book"
+        : kind === "volume"
+          ? "Add volume"
+          : "New test";
   return (
-    <div className="catalog-page admin-studio">
+    <div className="catalog-page admin-studio unified-studio">
       <PageTitle
-        eyebrow="ADMIN / MATERIALS"
-        title="Everything in its place."
-        description="Choose a book, open a test, then prepare each Part separately."
+        eyebrow="ADMIN / CONTENT LIBRARY"
+        title={t?.title || selected?.name || "Books"}
+        description={
+          testId
+            ? "Add and edit the Parts in this test."
+            : !category
+              ? "Choose a book, for example Cambridge."
+              : showVolumes
+                ? "Choose a volume, for example Cambridge 10."
+                : "Choose a test to open its Parts."
+        }
         action={
-          <button className="button primary" onClick={() => open("book")}>
-            <Plus size={16} />
-            Add book
-          </button>
+          testId ? (
+            t ? (
+              <Link className="button secondary" to={`/tests/${t.id}`}>
+                Preview
+                <ChevronRight size={15} />
+              </Link>
+            ) : undefined
+          ) : categories.data && (!category || selected) ? (
+            <button className="button primary" onClick={() => open(kind)}>
+              <Plus size={16} />
+              {createLabel}
+            </button>
+          ) : undefined
         }
       />
-      <div className="studio-section-tabs">
-        <span>
-          <FileText size={16} />
-          Materials
-        </span>
-        <Link to="/admin/materials">
-          <Settings size={14} />
-          Independent materials & collections
-        </Link>
-        <Link to="/library">
-          Student view
-          <ChevronRight size={13} />
-        </Link>
-      </div>
-      {error != null && !dialog && !attach && <ErrorState error={error} />}
+      <StudioFlow stage={stage} />
       <div className="studio-layout">
-        <aside className="panel studio-tree">
-          <div className="studio-tree-head">
-            <strong>Collections & books</strong>
-            <button
-              className="icon-button"
-              aria-label="Add source collection"
-              onClick={() => open("source")}
-            >
-              <Plus size={16} />
-            </button>
-          </div>
-          <label className="studio-tree-search">
-            <Search size={15} />
-            <input
-              aria-label="Find a book"
-              placeholder="Find a book…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
-          <div className="studio-tree-scroll">
-            {categories.isPending ? (
-              <Loading />
-            ) : categories.error ? (
-              <ErrorState error={categories.error} />
-            ) : search ? (
-              (categories.data || [])
-                .filter((c) =>
-                  c.name.toLowerCase().includes(search.toLowerCase()),
-                )
-                .map((c) => (
-                  <button
-                    key={c.id}
-                    className="tree-search-result"
-                    onClick={() => {
-                      choose(c.id);
-                      setSearch("");
-                    }}
-                  >
-                    <BookOpen size={15} />
-                    {c.name}
-                  </button>
-                ))
-            ) : (
-              tree(null)
-            )}
-            {!categories.isPending && !categories.data?.length && (
-              <button
-                className="button secondary"
-                onClick={() => open("source")}
-              >
-                Create your first collection
-              </button>
-            )}
-          </div>
-          <div className="studio-tree-bottom">
-            <FolderOpen size={13} />
-            Source → book → test
-          </div>
-        </aside>
+        <BookHierarchy categoryId={category} testId={testId} />
         <div className="studio-main">
-          <CatalogBreadcrumbs
-            categories={categories.data || []}
-            category={category}
-            base="/admin"
-          />
-          {testId ? (
+          <div className="studio-location">
+            <CatalogBreadcrumbs
+              categories={categories.data || []}
+              category={category}
+              base="/admin"
+              rootLabel="Books"
+            />
+            {t && (
+              <span className="crumb-item">
+                <ChevronRight size={12} />
+                <strong>{t.title}</strong>
+              </span>
+            )}
+          </div>
+          {error != null && !dialog && !attach && <ErrorState error={error} />}{" "}
+          {categories.isPending ? (
+            <Loading />
+          ) : categories.error ? (
+            <ErrorState error={categories.error} />
+          ) : category && !selected ? (
+            <Empty
+              title="Book or volume not found"
+              description="Return to Books to choose another item."
+              action={
+                <Link className="button secondary" to="/admin">
+                  Books
+                </Link>
+              }
+            />
+          ) : testId ? (
             <>
               {test.isPending ? (
                 <Loading />
@@ -331,26 +344,67 @@ export function TestStudio() {
               ) : (
                 t && (
                   <>
-                    <div className="studio-test-heading">
-                      <div>
-                        <button
-                          className="back-link"
-                          onClick={() => choose(t.category)}
-                        >
-                          <ArrowLeft size={14} />
-                          Back to tests
-                        </button>
-                        <h2>{t.title}</h2>
-                        <p className="muted">
-                          One upload per Part. Mock and Practice use the same
-                          content.
-                        </p>
-                      </div>
-                      <Link className="button secondary" to={`/tests/${t.id}`}>
-                        Preview
-                        <ChevronRight size={15} />
-                      </Link>
+                    <div className="studio-level-heading">
+                      <button
+                        className="back-link"
+                        onClick={() => choose(t.category)}
+                      >
+                        <ArrowLeft size={14} />
+                        Back to tests
+                      </button>
+                      <h2>Parts</h2>
                     </div>
+                    {!isVolume && (
+                      <div className="notice-box legacy-test-location">
+                        <p>
+                          This existing test needs a volume inside its book.
+                        </p>
+                        {children.some(
+                          (c) =>
+                            !categories.data.some(
+                              (child) => child.parent === c.id,
+                            ),
+                        ) ? (
+                          <form onSubmit={(e) => void moveTest(e)}>
+                            <label>
+                              Move test to volume
+                              <select
+                                value={moveVolume}
+                                required
+                                onChange={(e) => setMoveVolume(e.target.value)}
+                              >
+                                <option value="">Choose a volume</option>
+                                {children
+                                  .filter(
+                                    (c) =>
+                                      !categories.data.some(
+                                        (child) => child.parent === c.id,
+                                      ),
+                                  )
+                                  .map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </label>
+                            <button
+                              className="button secondary"
+                              disabled={busy || !moveVolume}
+                            >
+                              Move test
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            className="text-link"
+                            onClick={() => choose(t.category)}
+                          >
+                            Open the book to add a volume
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <div className="full-test-banner">
                       <span className="full-test-icon">
                         <FileText size={23} />
@@ -483,74 +537,149 @@ export function TestStudio() {
             </>
           ) : (
             <>
-              <div className="studio-test-heading">
+              <div className="studio-level-heading">
+                {selected && (
+                  <button
+                    className="back-link"
+                    onClick={() => choose(selected.parent)}
+                  >
+                    <ArrowLeft size={14} />
+                    {selected.parent ? "Back to book" : "Back to books"}
+                  </button>
+                )}
                 <div>
-                  <h2>{selected?.name || "All books"} · Tests</h2>
-                  <p className="muted">Open a test to add its Parts.</p>
+                  <h2>{!category ? "Choose a book" : noun}</h2>
+                  <small className="muted">
+                    {isVolume
+                      ? tests.data
+                        ? `${tests.data.count} tests`
+                        : ""
+                      : `${listing.length} ${noun.toLowerCase()}`}
+                  </small>
                 </div>
-                <button
-                  className="button primary"
-                  disabled={!categories.data?.length}
-                  onClick={() => open("test")}
-                >
-                  <Plus size={15} />
-                  New test
-                </button>
               </div>
-              {tests.isPending ? (
-                <Loading />
-              ) : tests.error ? (
-                <ErrorState error={tests.error} />
-              ) : tests.data.count ? (
+              <form
+                className="studio-level-search search-field"
+                onSubmit={find}
+              >
+                <Search size={16} />
+                <input
+                  aria-label={`Search ${noun.toLowerCase()}`}
+                  placeholder={`Search ${noun.toLowerCase()}…`}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <button className="button subtle">Search</button>
+              </form>
+              {isVolume ? (
+                tests.isPending ? (
+                  <Loading />
+                ) : tests.error ? (
+                  <ErrorState error={tests.error} />
+                ) : tests.data.count ? (
+                  <>
+                    <div className="catalog-cards studio-test-cards">
+                      {tests.data.results.map((next) => (
+                        <button
+                          key={next.id}
+                          className="catalog-card"
+                          onClick={() => choose(next.category, next.id)}
+                        >
+                          <div className="catalog-card-top">
+                            <span className="catalog-folder">
+                              <FileText size={22} />
+                            </span>
+                            <span className="pill">
+                              {
+                                next.parts.filter(
+                                  (p) => p.status === "published",
+                                ).length
+                              }
+                              /4 READY
+                            </span>
+                          </div>
+                          <h3>{next.title}</h3>
+                          <p>Full test and Parts 1–4</p>
+                          <div className="catalog-card-bottom">
+                            Open Parts
+                            <ChevronRight size={14} />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <Pagination
+                      page={page}
+                      count={tests.data.count}
+                      onChange={paginate}
+                    />
+                  </>
+                ) : (
+                  <div className="panel">
+                    <Empty
+                      title="No tests yet"
+                      description={
+                        term
+                          ? "Try another test name."
+                          : "Use New test above. Its Parts will appear inside the test."
+                      }
+                    />
+                  </div>
+                )
+              ) : listing.length ? (
                 <>
                   <div className="catalog-cards studio-test-cards">
-                    {tests.data.results.map((t) => (
+                    {listing.slice((page - 1) * 6, page * 6).map((c) => (
                       <button
-                        key={t.id}
+                        key={c.id}
                         className="catalog-card"
-                        onClick={() => choose(t.category, t.id)}
+                        onClick={() => choose(c.id)}
                       >
                         <div className="catalog-card-top">
                           <span className="catalog-folder">
-                            <FileText size={22} />
+                            <BookOpen size={23} />
                           </span>
                           <span className="pill">
-                            {
-                              t.parts.filter((p) => p.status === "published")
-                                .length
-                            }
-                            /4 READY
+                            {c.parent ? "VOLUME" : "BOOK"}
                           </span>
                         </div>
-                        <h3>{t.title}</h3>
-                        <p>{t.category_name}</p>
+                        <h3>{c.name}</h3>
+                        <p>
+                          {c.description ||
+                            (!c.parent
+                              ? "Open this book to choose a volume."
+                              : "Open this volume to choose a test.")}
+                        </p>
                         <div className="catalog-card-bottom">
-                          Manage Parts
+                          {c.parent ? "Open tests" : "Open volumes"}
                           <ChevronRight size={14} />
                         </div>
                       </button>
                     ))}
                   </div>
-                  <Pagination
-                    page={page}
-                    count={tests.data.count}
-                    onChange={setPage}
-                  />
+                  {listing.length > 6 && (
+                    <Pagination
+                      page={page}
+                      count={listing.length}
+                      onChange={paginate}
+                    />
+                  )}
                 </>
               ) : (
                 <div className="panel">
                   <Empty
-                    title="Your next test starts here"
-                    description="Create a test in the selected book, then add Parts 1–4."
-                    action={
-                      <button
-                        className="button secondary"
-                        disabled={!categories.data?.length}
-                        onClick={() => open("test")}
-                      >
-                        <Plus size={15} />
-                        Create test
-                      </button>
+                    title={
+                      term
+                        ? `No matching ${noun.toLowerCase()}`
+                        : !category
+                          ? "Add your first book"
+                          : "No volumes yet"
+                    }
+                    description={
+                      term
+                        ? "Try another name."
+                        : !category
+                          ? "Use Add book above, then add a volume inside it."
+                          : "Use Add volume above, then create tests inside the volume."
                     }
                   />
                 </div>
@@ -569,10 +698,10 @@ export function TestStudio() {
           >
             <div className="section-title">
               <h2 id="studio-dialog-title">
-                {dialog === "source"
-                  ? "New collection"
-                  : dialog === "book"
-                    ? "Add a book"
+                {dialog.kind === "book"
+                  ? "Add book"
+                  : dialog.kind === "volume"
+                    ? "Add volume"
                     : "New test"}
               </h2>
               <button
@@ -585,40 +714,31 @@ export function TestStudio() {
               </button>
             </div>
             <form onSubmit={(e) => void create(e)}>
+              {dialog.parent && (
+                <p className="studio-create-location">
+                  Inside{" "}
+                  <strong>
+                    {categories.data?.find((c) => c.id === dialog.parent)?.name}
+                  </strong>
+                </p>
+              )}
               <label>
                 Name
                 <input
                   autoFocus
                   required
-                  maxLength={dialog === "test" ? 200 : 120}
+                  maxLength={dialog.kind === "test" ? 200 : 120}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder={
-                    dialog === "source"
+                    dialog.kind === "book"
                       ? "e.g. Cambridge"
-                      : dialog === "book"
-                        ? "e.g. Cambridge 10"
+                      : dialog.kind === "volume"
+                        ? `e.g. ${selected?.name || "Cambridge"} 10`
                         : "e.g. Test 1"
                   }
                 />
               </label>
-              {dialog !== "source" && (
-                <label>
-                  {dialog === "book" ? "Inside collection" : "Inside book"}
-                  <select
-                    required
-                    value={parent}
-                    onChange={(e) => setParent(e.target.value)}
-                  >
-                    <option value="">Select a collection</option>
-                    {categories.data?.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {categoryPathLabel(categories.data, c)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
               {error != null && <ErrorState error={error} />}
               <div className="studio-modal-actions">
                 <button
@@ -704,8 +824,4 @@ export function TestStudio() {
       )}
     </div>
   );
-}
-function categoryPathLabel(categories: Category[], c: Category) {
-  const p = categories.find((x) => x.id === c.parent);
-  return p ? `${p.name} / ${c.name}` : c.name;
 }

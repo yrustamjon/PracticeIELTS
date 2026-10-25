@@ -107,14 +107,16 @@ export function CatalogBreadcrumbs({
   categories,
   category,
   base = "/library",
+  rootLabel = "Library",
 }: {
   categories: Category[];
   category: number | null;
   base?: string;
+  rootLabel?: string;
 }) {
   return (
     <nav className="breadcrumbs" aria-label="Location">
-      <Link to={base}>Library</Link>
+      <Link to={base}>{rootLabel}</Link>
       {categoryPath(categories, category).map((c) => (
         <span className="crumb-item" key={c.id}>
           <ChevronRight size={12} />
@@ -145,13 +147,22 @@ export function NestedLibrary({
     queryKey: ["categories", "all"],
     queryFn: () => allPages<Category>("categories/?page_size=100"),
   });
+  const selected = categories.data?.find((c) => c.id === category),
+    children = (categories.data || []).filter(
+      (c) =>
+        (c.parent || null) === category &&
+        c.name.toLowerCase().includes(term.toLowerCase()),
+    );
+  const inVolume =
+    !!selected?.parent &&
+    !(categories.data || []).some((c) => c.parent === category);
   const filter = `category=${category || ""}&search=${encodeURIComponent(term)}&page_size=6`,
     query = filter + `&page=${page}`,
     testQuery = filter + `&page=${testPage}`;
   const tests = useQuery({
-    queryKey: ["listening-tests", testQuery],
+    queryKey: ["listening-tests", testQuery, inVolume],
     queryFn: () =>
-      !category && !term
+      !inVolume
         ? Promise.resolve<Page<ListeningTest>>({
             results: [],
             count: 0,
@@ -172,12 +183,6 @@ export function NestedLibrary({
     queryFn: () => api<{ results: MockAttempt[] }>("mock-attempts/"),
     enabled: defaultMode === "mock",
   });
-  const selected = categories.data?.find((c) => c.id === category),
-    children = (categories.data || []).filter(
-      (c) =>
-        (c.parent || null) === category &&
-        c.name.toLowerCase().includes(term.toLowerCase()),
-    );
   function update(key: string, value: string) {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
@@ -196,7 +201,13 @@ export function NestedLibrary({
           selected?.name ||
           (defaultMode === "mock" ? "Mock Tests" : "Practice Library")
         }
-        description="Choose a collection, open a book, then select your test."
+        description={
+          inVolume
+            ? "Choose a test, then open its Parts."
+            : category
+              ? "Choose a volume, for example Cambridge 10."
+              : "Choose a book, then a volume and a test."
+        }
         action={
           editor ? (
             <Link
@@ -294,8 +305,10 @@ export function NestedLibrary({
         {children.length > 0 && (
           <section className="catalog-section">
             <div className="section-title">
-              <h2>{category ? "Books & collections" : "Your collections"}</h2>
-              <small className="muted">{children.length} collections</small>
+              <h2>{category ? "Volumes" : "Books"}</h2>
+              <small className="muted">
+                {children.length} {category ? "volumes" : "books"}
+              </small>
             </div>
             <div className="catalog-cards">
               {children.slice((folderPage - 1) * 6, folderPage * 6).map((c) => (
@@ -308,9 +321,7 @@ export function NestedLibrary({
                     <span className="catalog-folder">
                       <FolderOpen size={23} />
                     </span>
-                    <span className="pill">
-                      {c.parent ? "BOOK / COLLECTION" : "COLLECTION"}
-                    </span>
+                    <span className="pill">{c.parent ? "VOLUME" : "BOOK"}</span>
                   </div>
                   <h3>{c.name}</h3>
                   <p>
@@ -318,7 +329,7 @@ export function NestedLibrary({
                       "Open the books and tests in this collection."}
                   </p>
                   <div className="catalog-card-bottom">
-                    Open collection
+                    {c.parent ? "Open tests" : "Open volumes"}
                     <ChevronRight size={15} />
                   </div>
                 </button>

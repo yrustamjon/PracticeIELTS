@@ -37,3 +37,15 @@ Publication of four Parts schedules `learning.tasks.assemble_listening_test`. Th
 Assembly failures preserve the prior Full publication and report an editor-visible error/retry state. A test with four transcripts but incomplete questions offers Full Practice only. Mixing question presentations requires correction before Full question assembly. Book/test/Part writes enforce ownership in addition to role checks. Active-exam guards expand to all recordings within the test so sibling Practice/transcripts cannot reveal its answers.
 
 The real Practice workspace is bounded on desktop: paginated exercise list, fixed audio/check/navigation and an independently scrolling editor/feedback area. Difficulty switches and navigation await persisted drafts and retain version-pinned server behavior. Main route/query navigation resets document scroll; exercise pagination uses its own list state. Mock libraries retain explicit links to active attempts.
+
+## Book → Volume → Test → Parts navigation
+
+The admin has one context-driven path. Category roots are presented as Books (Cambridge), their leaf child categories as Volumes (Cambridge 10), then ListeningTest and TestPart records. A book view renders its volume cards; a volume view renders tests; a test view renders Parts. Creation fixes its parent from the current context rather than asking users to choose another destination. The API rejects test creation in root/nonleaf categories.
+
+BookHierarchy is shared by the studio and grouped material editor. It fetches owned test metadata as well as categories, displays all four levels and actual Part readiness, expands the active path and keeps unrelated branches out of the current view. Part actions use the existing authorized material endpoints. Existing independent material routes remain compatible without a second primary admin path. Misclassified existing root tests can be moved to a volume; linked material categories update without replacing publications or student history.
+
+## Transcript correction boundaries
+
+Review commits a finished time entry on blur/Enter, keeping intermediate typing local. The edited interval is authoritative. Adjacent end/start edges are trimmed only when needed to leave a 50ms gap; wider pauses are preserved. The operation refuses to erase a neighboring interval and leaves a visible validation warning. Timing-only Undo preserves text edits. Removing a draft row has a separate Undo; appending cannot create a zero-length interval at the recording end.
+
+The transcript API independently validates nonempty text, integer milliseconds, positive/nonoverlapping intervals and measured audio bounds. Prior word anchors are looked up within the same material/audio/version by segment ID (or unchanged interval for older clients), rather than row index. Deleting a row therefore preserves valid anchors on later rows. Text corrections retain the existing alignment path; changed boundaries discard obsolete word anchors and require review. Every save creates a new transcript version, preserving published versions and student version pins.
