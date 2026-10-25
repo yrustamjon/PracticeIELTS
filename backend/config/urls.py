@@ -18,6 +18,7 @@ from exams.views import (
     TeacherDocumentPage,
     TeacherPdfPage,
 )
+from learning.tests_api import ListeningTestViewSet
 from learning.views import (
     AudioStream,
     CategoryViewSet,
@@ -28,6 +29,7 @@ from learning.views import (
 )
 
 router = DefaultRouter()
+router.register("listening-tests", ListeningTestViewSet, basename="listening-test")
 router.register("categories", CategoryViewSet)
 router.register("materials", MaterialViewSet, basename="material")
 router.register("sessions", SessionViewSet, basename="session")

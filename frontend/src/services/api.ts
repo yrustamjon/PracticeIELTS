@@ -54,6 +54,9 @@ export type Material = {
   mock_available?: boolean;
   question_count?: number;
   transcript_audio_id?: number | null;
+  part_question_counts?: Record<string, number>;
+  test_part?: { test: number; number: number } | null;
+  full_test?: number | null;
   audio: Audio | null;
   segments: Segment[];
   version_id: number | null;
@@ -290,3 +293,41 @@ export type PdfField = {
   height: number;
 };
 export type PaperSection = { part: number; html: string };
+
+export type Page<T> = {
+  results: T[];
+  count: number;
+  next: string | null;
+  previous: string | null;
+};
+export type TestMaterial = {
+  id: number;
+  title: string;
+  status: string;
+  mock_available: boolean;
+  question_count: number;
+};
+export type ListeningTest = {
+  id: number;
+  title: string;
+  category: number;
+  category_name: string;
+  parts: (TestMaterial & { number: number })[];
+  full: TestMaterial | null;
+  full_source?: "upload" | "assembled";
+  assembly_state: "waiting" | "queued" | "running" | "ready" | "failed";
+  assembly_error: string;
+};
+export async function allPages<T>(path: string): Promise<T[]> {
+  const items: T[] = [];
+  let next: string | null = path;
+  while (next) {
+    const page: Page<T> = await api<Page<T>>(next);
+    items.push(...page.results);
+    next = page.next
+      ? new URL(page.next, location.origin).pathname.split("/api/v1/")[1] +
+        new URL(page.next, location.origin).search
+      : null;
+  }
+  return items;
+}

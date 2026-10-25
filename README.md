@@ -147,3 +147,31 @@ It needs no npm/Django. Its custom-audio timing is approximate and it has no rea
 Use environment-managed secrets and private storage. Local media is ignored under `backend/media`; optional S3-compatible storage is configured through `.env.example` and has not been tested against an external bucket. Never expose storage credentials to React. Docker builds mount the host CA bundle as a BuildKit secret; TLS and artifact verification remain enabled. No deployment/publication is implied by pushing code.
 
 Production hardening and operational requirements are in `docs/DEPLOYMENT.md`. API contracts, architecture, tasks and contributor instructions live at the repository root.
+
+## Books, tests and separate Parts
+
+The approved design is now connected to the real application:
+
+- **Library:** source collection → book → test. Search and pagination keep the collection readable. Existing independent materials stay available.
+- **Admin Panel:** create a source/book/test, then open a Part card. Details, audio, questions, transcript review and publication appear as separate steps. Existing recordings can be attached to a Part without deleting their history.
+- **Full recording:** open a test and choose **Upload Full recording** to prepare one complete recording using the same editor. Opening this editor preserves the current publication. Uploading/reviewing and publishing a replacement makes it a directly authored Full test.
+- **Parts:** upload and publish Parts 1–4 individually. When all four are published, Celery builds a combined recording and a new Full transcript/question version automatically. Each Part remains usable independently. A directly authored Full recording is kept separate; it is not silently overwritten by later Part publications.
+- **Student:** choose Full test or an available Part, then Mock or Practice. Parts become selectable when their own recordings/transcripts are published; a Full-only upload does not infer unknown Part audio boundaries.
+- **Practice:** an eight-item paginated list scrolls independently from the audio/editor. Difficulty changes and answer entry use the real persisted sessions; easy alone shows the expected word count. Ctrl/⌘ + Enter checks the answer.
+
+For automatic Full assembly, use the same question layout across Parts: text, native HTML, or original PDF. PDF assembly copies approved question pages only and retains field geometry; answer-key pages are excluded. A Part can use question numbers starting at 1 or its IELTS starting number (Part 2: 11, Part 3: 21, Part 4: 31). The assembled Full paper numbers all questions in order. All four Parts can provide Full Practice even before every Part has exam questions; Full Mock requires questions for all four. Worker/format errors appear in the test's admin view with a retry action.
+
+After pulling, apply the new hierarchy migration and restart the Django and Celery processes. From an activated backend virtual environment:
+
+```sh
+cd backend
+python manage.py migrate
+```
+
+Restart Celery in another terminal inside `backend`, with the virtual environment active:
+
+```sh
+celery -A config worker --loglevel=info
+```
+
+This registers the new `learning.tasks.assemble_listening_test` task. No new npm dependencies were added.

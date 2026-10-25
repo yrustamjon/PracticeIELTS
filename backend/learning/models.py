@@ -63,6 +63,56 @@ class AudioAsset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class ListeningTest(models.Model):
+    title = models.CharField(max_length=200)
+    category = models.ForeignKey(
+        Category, on_delete=models.PROTECT, related_name="listening_tests"
+    )
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    full_material = models.OneToOneField(
+        Material,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="full_test",
+    )
+    assembly_state = models.CharField(
+        max_length=12,
+        default="waiting",
+        choices=[(v, v) for v in ["waiting", "queued", "running", "ready", "failed"]],
+    )
+    assembly_error = models.TextField(blank=True)
+    assembly_signature = models.JSONField(default=list)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["title", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["category", "title"], name="unique_book_test_title"
+            )
+        ]
+
+
+class TestPart(models.Model):
+    test = models.ForeignKey(
+        ListeningTest, on_delete=models.PROTECT, related_name="parts"
+    )
+    number = models.PositiveSmallIntegerField()
+    material = models.OneToOneField(
+        Material, on_delete=models.PROTECT, related_name="test_part"
+    )
+
+    class Meta:
+        ordering = ["number"]
+        constraints = [
+            models.UniqueConstraint(fields=["test", "number"], name="unique_test_part"),
+            models.CheckConstraint(
+                condition=Q(number__gte=1, number__lte=4), name="test_part_range"
+            ),
+        ]
+
+
 class TranscriptVersion(models.Model):
     material = models.ForeignKey(
         Material, on_delete=models.PROTECT, related_name="versions"

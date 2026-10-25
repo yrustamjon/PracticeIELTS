@@ -49,17 +49,20 @@ function question(number: number): ExamQuestion {
 }
 export function QuestionStudio({
   materialId,
+  assignedPart,
   audioReady,
   audioId,
   onSaved,
   onDirty,
 }: {
   materialId: number;
+  assignedPart?: number;
   audioReady: boolean;
   audioId?: number;
   onSaved: () => void;
   onDirty: (dirty: boolean) => void;
 }) {
+  const startNumber = assignedPart ? (assignedPart - 1) * 10 + 1 : 1;
   const cache = useQueryClient();
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [pages, setPages] = useState<number[]>([]);
@@ -601,7 +604,7 @@ export function QuestionStudio({
                   setQuestions((list) =>
                     list
                       .filter((_, n) => n !== i)
-                      .map((item, n) => ({ ...item, number: n + 1 })),
+                      .map((item, n) => ({ ...item, number: n + startNumber })),
                   );
                   setDirty(true);
                 }}
@@ -613,7 +616,7 @@ export function QuestionStudio({
               <label>
                 Question type
                 <select
-                  aria-label={`Question ${i + 1} type`}
+                  aria-label={`Question ${q.number} type`}
                   value={q.type}
                   onChange={(e) =>
                     update(i, { type: e.target.value as QuestionType })
@@ -629,8 +632,9 @@ export function QuestionStudio({
               <label>
                 Part
                 <select
-                  aria-label={`Question ${i + 1} part`}
-                  value={q.part}
+                  aria-label={`Question ${q.number} part`}
+                  disabled={!!assignedPart}
+                  value={assignedPart || q.part}
                   onChange={(e) => update(i, { part: Number(e.target.value) })}
                 >
                   {[1, 2, 3, 4].map((n) => (
@@ -643,7 +647,7 @@ export function QuestionStudio({
               <label className="full">
                 Question / prompt
                 <textarea
-                  aria-label={`Question ${i + 1} prompt`}
+                  aria-label={`Question ${q.number} prompt`}
                   rows={2}
                   value={q.prompt}
                   onChange={(e) => update(i, { prompt: e.target.value })}
@@ -653,7 +657,7 @@ export function QuestionStudio({
               <label className="full">
                 Instructions
                 <input
-                  aria-label={`Question ${i + 1} instructions`}
+                  aria-label={`Question ${q.number} instructions`}
                   value={q.instructions}
                   onChange={(e) => update(i, { instructions: e.target.value })}
                 />
@@ -662,7 +666,7 @@ export function QuestionStudio({
                 <label className="full">
                   Options — one per line (A. Option text)
                   <textarea
-                    aria-label={`Question ${i + 1} options`}
+                    aria-label={`Question ${q.number} options`}
                     rows={4}
                     value={q.options
                       .map((o) => o.key + ". " + o.text)
@@ -689,7 +693,7 @@ export function QuestionStudio({
                 <label>
                   Maximum answer words
                   <input
-                    aria-label={`Question ${i + 1} word limit`}
+                    aria-label={`Question ${q.number} word limit`}
                     type="number"
                     min="1"
                     max="20"
@@ -707,7 +711,7 @@ export function QuestionStudio({
               >
                 Accepted answer(s)
                 <input
-                  aria-label={`Question ${i + 1} answers`}
+                  aria-label={`Question ${q.number} answers`}
                   value={(q.answers || [])
                     .map((a) => (Array.isArray(a) ? a.join("+") : a))
                     .join("; ")}
@@ -737,7 +741,7 @@ export function QuestionStudio({
               <label className="full">
                 Student context / description
                 <textarea
-                  aria-label={`Question ${i + 1} context`}
+                  aria-label={`Question ${q.number} context`}
                   rows={2}
                   value={String(q.context.body || "")}
                   onChange={(e) =>
@@ -752,7 +756,7 @@ export function QuestionStudio({
                 <label className="full">
                   Table — one row per line, separate cells with |
                   <textarea
-                    aria-label={`Question ${i + 1} table`}
+                    aria-label={`Question ${q.number} table`}
                     rows={4}
                     value={
                       Array.isArray(q.context.table)
@@ -793,7 +797,13 @@ export function QuestionStudio({
           className="button secondary"
           disabled={questions.length >= 100}
           onClick={() => {
-            setQuestions((list) => [...list, question(list.length + 1)]);
+            setQuestions((list) => [
+              ...list,
+              {
+                ...question(list.length + startNumber),
+                ...(assignedPart ? { part: assignedPart } : {}),
+              },
+            ]);
             setDirty(true);
           }}
         >

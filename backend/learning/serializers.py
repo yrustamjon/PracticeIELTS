@@ -70,6 +70,8 @@ class MaterialSerializer(serializers.ModelSerializer):
     question_count = serializers.SerializerMethodField()
     part_question_counts = serializers.SerializerMethodField()
     transcript_audio_id = serializers.SerializerMethodField()
+    test_part = serializers.SerializerMethodField()
+    full_test = serializers.SerializerMethodField()
 
     class Meta:
         model = Material
@@ -94,6 +96,8 @@ class MaterialSerializer(serializers.ModelSerializer):
             "question_count",
             "part_question_counts",
             "transcript_audio_id",
+            "test_part",
+            "full_test",
         ]
 
     def version(self, obj):
@@ -193,3 +197,18 @@ class MaterialSerializer(serializers.ModelSerializer):
     def get_transcript_audio_id(self, obj) -> int | None:
         version = self.version(obj)
         return version.audio_id if version else None
+
+    def get_test_part(self, obj) -> dict | None:
+        from .models import TestPart
+
+        part = TestPart.objects.filter(material=obj).first()
+        return {"test": part.test_id, "number": part.number} if part else None
+
+    def get_full_test(self, obj) -> int | None:
+        from .models import ListeningTest
+
+        return (
+            ListeningTest.objects.filter(full_material=obj)
+            .values_list("pk", flat=True)
+            .first()
+        )

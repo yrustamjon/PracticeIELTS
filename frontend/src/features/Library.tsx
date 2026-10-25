@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
+  Navigate,
   useNavigate,
   useParams,
   useSearchParams,
@@ -320,6 +321,13 @@ export function MaterialDetail() {
   if (query.error) return <ErrorState error={query.error} />;
   const m = query.data;
   const mode = params.get("mode") || (m.mock_available ? "mock" : "practice");
+  if (m.test_part || m.full_test)
+    return (
+      <Navigate
+        replace
+        to={`/tests/${m.test_part?.test || m.full_test}?part=${m.test_part?.number || "all"}&mode=${mode}`}
+      />
+    );
   return (
     <>
       <button

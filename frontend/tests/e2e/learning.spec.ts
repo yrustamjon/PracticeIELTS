@@ -72,6 +72,12 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
   });
   await page.getByRole("link", { name: "Admin Panel", exact: true }).click();
   await page
+    .getByRole("link", {
+      name: "Independent materials & collections",
+      exact: true,
+    })
+    .click();
+  await page
     .getByRole("button", { name: "Add collection", exact: true })
     .click();
   await page
@@ -111,6 +117,10 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
   await page.getByRole("button", { name: "Save details", exact: true }).click();
   await expect(page.getByText("Details saved.", { exact: true })).toBeVisible();
   await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Audio" })
+    .click();
+  await page
     .getByLabel("Upload audio", { exact: true })
     .setInputFiles(recording);
   await page
@@ -136,9 +146,17 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
   // A deterministic manual fixture verifies downstream UI without claiming blocked ASR succeeded.
   fixture("seed_manual", { TEST_MATERIAL_ID: material });
   await page.reload();
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Review" })
+    .click();
   await expect(page.getByLabel("Segment 1 text", { exact: true })).toHaveValue(
     "Welcome to our library.",
   );
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Questions" })
+    .click();
   await page
     .getByLabel("Question paper PDF", { exact: true })
     .setInputFiles(pdf);
@@ -199,6 +217,10 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     ),
   ).toBeVisible();
   await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Publish" })
+    .click();
+  await page
     .getByRole("checkbox", {
       name: "I listened to the generated segments and reviewed the transcript.",
       exact: true,
@@ -223,10 +245,9 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     .getByRole("link", { name: "Practice Library", exact: true })
     .click();
   await studentPage
-    .getByRole("navigation", { name: "Choose practice type", exact: true })
-    .getByRole("button", { name: "Mock tests", exact: true })
+    .getByRole("link", { name: "Mock Tests", exact: true })
     .click();
-  await expect(studentPage).toHaveURL(/mode=mock/);
+  await expect(studentPage).toHaveURL(/mock-tests/);
   await studentPage.screenshot({
     path: "test-results/library-desktop.png",
     fullPage: true,
@@ -323,9 +344,12 @@ test("real upload outcome, explicit manual transcript fixture, PDF questions, di
     .click();
   await expect(studentPage.locator(".expected-word-count")).toHaveCount(0);
   await expect(
-    studentPage.getByRole("heading", { name: "Segment 1 / 2", exact: true }),
+    studentPage.getByRole("button", { name: "Go to segment 1", exact: true }),
   ).toBeVisible();
   await studentPage.getByRole("link", { name: title, exact: true }).click();
+  await studentPage
+    .getByRole("button", { name: "Listening Mock", exact: true })
+    .click();
   await studentPage
     .getByRole("radio", { name: /Mock · No time limit/ })
     .check();
@@ -488,6 +512,12 @@ test("audio only automatically becomes published Practice without manual transcr
   await login(page, teacher);
   await page.getByRole("link", { name: "Admin Panel", exact: true }).click();
   await page
+    .getByRole("link", {
+      name: "Independent materials & collections",
+      exact: true,
+    })
+    .click();
+  await page
     .getByRole("button", { name: "Add collection", exact: true })
     .click();
   await page
@@ -527,6 +557,10 @@ test("audio only automatically becomes published Practice without manual transcr
   await page.getByRole("button", { name: "Save details", exact: true }).click();
   await expect(page.getByText("Details saved.", { exact: true })).toBeVisible();
   await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Audio" })
+    .click();
+  await page
     .getByLabel("Upload audio", { exact: true })
     .setInputFiles(recording);
   await page
@@ -538,6 +572,10 @@ test("audio only automatically becomes published Practice without manual transcr
   await expect(page.locator(".processing-status.succeeded")).toBeVisible({
     timeout: 150000,
   });
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Review" })
+    .click();
   await expect(
     page.getByLabel("Segment 1 text", { exact: true }),
   ).toBeVisible();
@@ -551,6 +589,10 @@ test("audio only automatically becomes published Practice without manual transcr
     path: "test-results/real-auto-transcript-admin.png",
     fullPage: true,
   });
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Publish" })
+    .click();
   await page
     .getByRole("checkbox", {
       name: "I listened to the generated segments and reviewed the transcript.",
@@ -607,20 +649,26 @@ test("audio only automatically becomes published Practice without manual transcr
   await expect(
     learner.getByText("100% accuracy", { exact: true }),
   ).toBeVisible();
-  await learner.getByRole("link", { name: autoTitle, exact: true }).click();
+  await learner
+    .getByRole("link", { name: "Back to material", exact: true })
+    .click();
   await learner.locator('input[value="medium"]').check();
   await learner
     .getByRole("button", { name: "Start Dictation", exact: true })
     .click();
   await expect(learner.locator(".expected-word-count")).toHaveCount(0);
-  await expect(learner.locator(".segment-grid button")).toHaveCount(sentences);
-  await learner.getByRole("link", { name: autoTitle, exact: true }).click();
+  await expect(learner.locator(".practice-exercise-list button")).toHaveCount(
+    sentences,
+  );
+  await learner
+    .getByRole("link", { name: "Back to material", exact: true })
+    .click();
   await learner.locator('input[value="hard"]').check();
   await learner
     .getByRole("button", { name: "Start Dictation", exact: true })
     .click();
   await expect(learner.locator(".expected-word-count")).toHaveCount(0);
-  await expect(learner.locator(".segment-grid button")).toHaveCount(
+  await expect(learner.locator(".practice-exercise-list button")).toHaveCount(
     Math.ceil(sentences / 3),
   );
   await context.close();
@@ -707,7 +755,11 @@ test("original two-page PDF keeps headings, notes and table with ten positioned 
   fixture("create_layout_pdf");
   const material = fixture("create_text_mock").toString().trim();
   await login(page, teacher);
-  await page.goto(`/admin/${material}`);
+  await page.goto(`/admin/${material}?step=material-questions`);
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Questions" })
+    .click();
   await page
     .getByLabel("Question paper PDF", { exact: true })
     .setInputFiles(pdf);
@@ -765,6 +817,10 @@ test("original two-page PDF keeps headings, notes and table with ten positioned 
       { exact: true },
     ),
   ).toBeVisible();
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Publish" })
+    .click();
   await page
     .getByRole("checkbox", {
       name: "I listened to the generated segments and reviewed the transcript.",
@@ -874,7 +930,7 @@ test("original two-page PDF keeps headings, notes and table with ten positioned 
   await learner.setViewportSize({ width: 1280, height: 720 });
   await expect(
     learner.getByRole("heading", {
-      name: "Bring your practice to exam day",
+      name: "Mock Tests",
       exact: true,
     }),
   ).toBeInViewport();
@@ -890,7 +946,7 @@ test("original two-page PDF keeps headings, notes and table with ten positioned 
   ).toBe("rgb(252, 253, 255)");
   const headingBox = await learner
     .getByRole("heading", {
-      name: "Bring your practice to exam day",
+      name: "Mock Tests",
       exact: true,
     })
     .boundingBox();
@@ -928,7 +984,7 @@ test("reference-style native HTML keeps notes, choices and tables interactive", 
 }) => {
   const material = fixture("create_text_mock").toString().trim();
   await login(page, teacher);
-  await page.goto(`/admin/${material}`);
+  await page.goto(`/admin/${material}?step=material-questions`);
   const html = `<html><body><header>Promotion never imported</header><div id="part1"><p><strong>Questions 1–2</strong></p><p>Complete the notes. Write ONE WORD for each answer.</p><div class="gx-notes"><p class="gx-notes-title">Library visit</p><p class="gx-sec-title">Booking details</p><ul><li>Meeting point: <input type="text" data-question="1"> before nine.</li><li>Collect your books <input type="text" data-question="2"> at the counter.</li></ul></div><script>window.stolenAnswers = 'do not import';</script></div><div id="part2"><p><strong>Questions 3–4</strong></p><p>Choose the correct room, then complete the table.</p><label><input type="radio" data-question="3" value="A"> A Upstairs</label><label><input type="radio" data-question="3" value="B"> B Downstairs</label><table><tr><th>Item</th><th>Place</th></tr><tr><td>Books</td><td><input type="text" data-question="4"></td></tr></table></div></body></html>`;
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByLabel("HTML question paper", { exact: true }).setInputFiles({
@@ -957,6 +1013,10 @@ test("reference-style native HTML keeps notes, choices and tables interactive", 
       { exact: true },
     ),
   ).toBeVisible();
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Publish" })
+    .click();
   await page
     .getByRole("checkbox", {
       name: "I listened to the generated segments and reviewed the transcript.",
@@ -1137,4 +1197,382 @@ test("existing ten-question text attempt automatically uses one compact paper", 
   await expect(
     page.getByRole("heading", { name: "20% correct", exact: true }),
   ).toBeVisible();
+});
+
+test("approved book/test flow publishes separate Parts and assembles a real Full test", async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(240000);
+  const signedIn = page.waitForResponse(
+    (r) =>
+      r.url().endsWith("/api/v1/auth/login/") &&
+      r.request().method() === "POST",
+  );
+  await login(page, teacher);
+  const token = (await (await signedIn).json()).access;
+  await page.goto("/admin");
+  await page
+    .getByRole("button", { name: "Add source collection", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill(`Review collection ${stamp}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: `Review collection ${stamp} · Tests`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Add book", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill(`Review book ${stamp}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: `Review book ${stamp} · Tests`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  const category = new URL(page.url()).searchParams.get("category")!;
+  await page.getByRole("button", { name: "New test", exact: true }).click();
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Test 1");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Test 1", exact: true }),
+  ).toBeVisible();
+  const testId = new URL(page.url()).searchParams.get("test")!;
+  await page
+    .getByRole("button", { name: "Add Part", exact: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/admin\/\d+/);
+  const firstMaterial = Number(new URL(page.url()).pathname.split("/").at(-1));
+  await page
+    .getByLabel("Content source", { exact: true })
+    .fill("Original speech for hierarchy review");
+  await page
+    .getByLabel("License / permission", { exact: true })
+    .fill("Original fixture permission");
+  await page
+    .getByRole("checkbox", {
+      name: "I own this material or have permission to share it.",
+      exact: true,
+    })
+    .check();
+  await page.getByRole("button", { name: "Save details", exact: true }).click();
+  await expect(page.getByText("Details saved.", { exact: true })).toBeVisible();
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Audio" })
+    .click();
+  await expect(page.locator("#material-details")).toBeHidden();
+  await page
+    .getByLabel("Upload audio", { exact: true })
+    .setInputFiles(recording);
+  await page
+    .getByRole("button", {
+      name: "Upload & create Practice automatically",
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".processing-status.succeeded")).toBeVisible({
+    timeout: 150000,
+  });
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Questions" })
+    .click();
+  await page.getByRole("button", { name: "Add question", exact: true }).click();
+  await page
+    .getByLabel("Question 1 prompt", { exact: true })
+    .fill("We are at the ____.");
+  await page.getByLabel("Question 1 answers", { exact: true }).fill("library");
+  await page
+    .getByRole("button", { name: "Save exam questions", exact: true })
+    .click();
+  await expect(
+    page.getByText(
+      "Questions saved as a new version. Publishing will release Mock and Practice together.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Review" })
+    .click();
+  await expect(
+    page.getByLabel("Segment 1 text", { exact: true }),
+  ).toBeVisible();
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Publish" })
+    .click();
+  await page
+    .getByRole("checkbox", {
+      name: "I listened to the generated segments and reviewed the transcript.",
+      exact: true,
+    })
+    .check();
+  await page
+    .getByRole("button", {
+      name: "Approve & publish Mock + Practice",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByText(
+      "Material published. Its Practice levels are available in the student library.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  async function call(
+    method: string,
+    path: string,
+    data?: unknown,
+    multipart?: Record<string, unknown>,
+  ) {
+    const r = await page.request.fetch("/api/v1/" + path, {
+      method,
+      headers: { Authorization: `Bearer ${token}` },
+      ...(multipart ? { multipart } : { data }),
+    });
+    expect(r.ok(), path + " " + r.status()).toBeTruthy();
+    return r.json();
+  }
+  const source = await call("GET", `materials/${firstMaterial}/`);
+  const segments = source.segments.map(
+    (s: {
+      text: string;
+      speaker: string;
+      start_ms: number;
+      end_ms: number;
+    }) => ({
+      text: s.text,
+      speaker: s.speaker,
+      start_ms: s.start_ms,
+      end_ms: s.end_ms,
+    }),
+  );
+  const fs = await import("node:fs");
+  for (let n = 2; n <= 4; n++) {
+    const t = await call("POST", `listening-tests/${testId}/parts/`, {
+      number: n,
+    });
+    const m = t.parts.find((p: { number: number }) => p.number === n).id;
+    await call("PATCH", `materials/${m}/`, {
+      source: "Original hierarchy fixture",
+      license: "Author permission",
+      rights_confirmed: true,
+    });
+    await call("POST", `materials/${m}/audio/`, undefined, {
+      file: {
+        name: "original-part.wav",
+        mimeType: "audio/wav",
+        buffer: fs.readFileSync(recording),
+      },
+    });
+    await call("PUT", `materials/${m}/transcript/`, { segments });
+    await call("PUT", `materials/${m}/questions/`, {
+      presentation: "text",
+      questions: [
+        {
+          number: 1,
+          part: n,
+          type: "short_answer",
+          prompt: "We are at the ____.",
+          instructions: "Write ONE WORD ONLY.",
+          max_words: 1,
+          answers: ["library"],
+          options: [],
+          context: {},
+        },
+      ],
+      duration_seconds: 60,
+    });
+    await call("POST", `materials/${m}/publish/`, { confirm_review: true });
+  }
+  await page.goto(`/admin?category=${category}&test=${testId}`);
+  await expect(
+    page.getByRole("heading", { name: "Full test is available", exact: true }),
+  ).toBeVisible({ timeout: 60000 });
+  await expect(page.locator(".full-test-banner")).toContainText("4 / 4 ready");
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.screenshot({
+    path: "test-results/approved-admin-studio.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Upload Full recording", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Test 1 · Full test", exact: true }),
+  ).toBeVisible();
+  await page
+    .locator(".studio-steps button")
+    .filter({ hasText: "Audio" })
+    .click();
+  await expect(page.getByLabel("Upload audio", { exact: true })).toBeVisible();
+  await page
+    .getByRole("link", { name: "Back to Content Studio", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Upload Full recording", exact: true }),
+  ).toBeVisible();
+
+  const context = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+    }),
+    learner = await context.newPage();
+  await login(learner, student);
+  await learner.goto("/library");
+  await learner
+    .getByLabel("Search library", { exact: true })
+    .fill(`Review collection ${stamp}`);
+  await learner.getByRole("button", { name: "Search", exact: true }).click();
+  await learner
+    .locator(".catalog-card")
+    .filter({
+      has: learner.getByRole("heading", {
+        name: `Review collection ${stamp}`,
+        exact: true,
+      }),
+    })
+    .click();
+  await learner
+    .locator(".catalog-card")
+    .filter({
+      has: learner.getByRole("heading", {
+        name: `Review book ${stamp}`,
+        exact: true,
+      }),
+    })
+    .click();
+  await learner
+    .locator(".catalog-card")
+    .filter({
+      has: learner.getByRole("heading", { name: "Test 1", exact: true }),
+    })
+    .click();
+  await learner.screenshot({
+    path: "test-results/approved-test-modes.png",
+    fullPage: true,
+  });
+  await learner.getByRole("button", { name: /^Part 2/ }).click();
+  await learner
+    .locator(".test-mode-cards button")
+    .filter({ hasText: "Practice" })
+    .click();
+  await learner
+    .getByRole("button", { name: "Start Dictation", exact: true })
+    .click();
+  await expect(learner.locator("#answer")).toBeVisible();
+  await expect(learner.locator(".expected-word-count")).toBeVisible();
+  const geometry = await learner
+    .locator(".practice-check-actions")
+    .boundingBox();
+  expect(geometry!.y + geometry!.height).toBeLessThan(721);
+  await learner.screenshot({
+    path: "test-results/approved-practice-laptop.png",
+    fullPage: true,
+  });
+  await learner.getByRole("button", { name: /^Medium/ }).click();
+  await expect(learner.locator(".expected-word-count")).toHaveCount(0);
+  await learner.goto(`/tests/${testId}?part=all&mode=mock`);
+  await learner.getByRole("radio", { name: /No time limit/ }).check();
+  await learner
+    .getByRole("button", { name: "Start Mock", exact: true })
+    .click();
+  await expect(
+    learner.locator(".reference-question-paper input[type=text]"),
+  ).toHaveCount(1);
+  const attempt = learner.url().match(/mock\/(\d+)/)![1];
+  // Each Part has a distinct bound answer and the server persists all four.
+  for (let n = 1; n <= 4; n++) {
+    if (n > 1)
+      await learner
+        .getByRole("button", { name: `Part ${n}`, exact: true })
+        .click();
+    await learner
+      .locator(".reference-question-paper input[type=text]")
+      .fill("library");
+  }
+  learner.on("dialog", (d) => d.accept());
+  await learner
+    .getByRole("button", { name: "Submit Mock", exact: true })
+    .first()
+    .click();
+  await expect(learner).toHaveURL(new RegExp(`/mock/${attempt}/results`));
+  await expect(
+    learner.getByRole("heading", { name: "100% correct", exact: true }),
+  ).toBeVisible();
+  await learner.setViewportSize({ width: 390, height: 844 });
+  await learner.goto(`/tests/${testId}?mode=practice&part=1`);
+  await learner
+    .getByRole("button", { name: "Start Dictation", exact: true })
+    .click();
+  expect(
+    await learner.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await learner.screenshot({
+    path: "test-results/approved-practice-mobile.png",
+    fullPage: true,
+  });
+  await context.close();
+});
+
+test("Practice keeps long exercise lists paginated and saves answers across pages", async ({
+  page,
+}) => {
+  const material = fixture("create_long_practice").toString().trim();
+  await login(page, student);
+  await page.goto(`/library/${material}?mode=practice`);
+  await page
+    .getByRole("button", { name: "Start Dictation", exact: true })
+    .click();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.locator(".practice-exercise-list button")).toHaveCount(8);
+  expect(
+    await page
+      .locator(".practice-exercise-list")
+      .evaluate((el) => el.scrollHeight > el.clientHeight),
+  ).toBe(true);
+  await page
+    .locator(".practice-exercises")
+    .getByRole("button", { name: "Next page", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Go to segment 9", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Reveal Transcript", exact: true })
+    .click();
+  const reference = await page.locator(".hint-box").innerText();
+  await page.getByLabel("What did you hear?", { exact: true }).fill(reference);
+  await page.getByRole("button", { name: "Check Answer", exact: true }).click();
+  await expect(page.getByText("100% accuracy", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Go to segment 9", exact: true }),
+  ).toHaveAttribute("aria-current", "step");
+  await expect(
+    page.getByLabel("What did you hear?", { exact: true }),
+  ).toHaveValue(reference);
+  expect(
+    (await page.locator(".practice-check-actions").boundingBox())!.y,
+  ).toBeLessThan(720);
+  expect(
+    (await page.locator(".workspace-navigation").boundingBox())!.y,
+  ).toBeLessThan(720);
+  await page.screenshot({
+    path: "test-results/approved-practice-pagination.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: /^Medium/ }).click();
+  await expect(page.locator(".expected-word-count")).toHaveCount(0);
+  await expect(page.locator(".practice-exercise-list button")).toHaveCount(8);
 });

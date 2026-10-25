@@ -9,12 +9,12 @@ import {
   Lightbulb,
   Eye,
   RotateCcw,
-  Headphones,
   CheckCheck,
   FileText,
 } from "lucide-react";
 import { api, post, type Session, type Comparison } from "../services/api";
 import { Loading, ErrorState, PageTitle } from "../components/ui";
+import { Pagination } from "./Catalog";
 import { AudioPlayer } from "../components/AudioPlayer";
 export function ComparisonView({ result }: { result: Comparison }) {
   return (
@@ -74,6 +74,9 @@ export function Practice() {
 }
 function Workspace({ initial }: { initial: Session }) {
   const [session, setSession] = useState(initial);
+  const [listPage, setListPage] = useState(
+    Math.floor(initial.position / 8) + 1,
+  );
   const [answer, setAnswer] = useState(
     initial.drafts[String(initial.position)] || "",
   );
@@ -155,6 +158,7 @@ function Workspace({ initial }: { initial: Session }) {
     try {
       const s = await persist(answer, session.position, next);
       setSession(s);
+      setListPage(Math.floor(next / 8) + 1);
       setAnswer(s.drafts[String(next)] || "");
       setResult(null);
       setHint("");
@@ -198,73 +202,146 @@ function Workspace({ initial }: { initial: Session }) {
       setError(e);
     }
   }
+  async function changeLevel(difficulty: string) {
+    if (difficulty === session.difficulty || busy) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await persist(answer, session.position);
+      const next = await post<Session>("sessions/", {
+        material: session.material,
+        difficulty,
+      });
+      navigate(`/practice/${next.id}`);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
-    <>
-      <button
-        className="back-link"
-        onClick={async () => {
-          try {
-            await persist(answer, session.position);
-            if ((window.history.state?.idx ?? 0) > 0) navigate(-1);
-            else navigate(`/library/${session.material}`);
-          } catch (e) {
-            setError(e);
-          }
-        }}
-      >
-        <ArrowLeft size={17} />
-        Back to material
-      </button>
+    <div className="practice-screen">
       <div className="breadcrumbs">
         <Link to="/library">Library</Link>
-        <ChevronRight size={13} />
-        <Link to={`/library/${session.material}`}>{session.title}</Link>
-        <ChevronRight size={13} />
-        <span>Dictation</span>
+        <ChevronRight size={12} />
+        <Link to={`/library/${session.material}?mode=practice`}>
+          {session.title}
+        </Link>
+        <ChevronRight size={12} />
+        <span>Practice</span>
       </div>
       <PageTitle
-        eyebrow="LISTENING / DICTATION"
+        eyebrow="LISTEN. WRITE. CHECK."
         title={session.title}
-        description="Listen carefully. Write what you hear. Find your rhythm."
+        description="One exercise at a time. Build your listening with the original audio."
         action={
-          <span className="difficulty-badge">
-            <Headphones size={16} />
-            {session.difficulty} mode
-          </span>
+          <Link
+            className="button secondary"
+            to={`/library/${session.material}?mode=practice`}
+          >
+            <ArrowLeft size={15} />
+            Back to material
+          </Link>
         }
       />
-      <div className="workspace-grid">
-        <div>
-          <section className="panel">
-            <div className="workspace-heading">
-              <h2>
-                Segment {session.position + 1}
-                <span> / {session.groups.length}</span>
-              </h2>
-              <span className="save-status">
-                <CheckCheck size={16} />
-                {save}
+      <div className="practice-toolbar">
+        <div className="practice-levels" aria-label="Practice difficulty">
+          {[
+            ["easy", "Easy", "Word count shown"],
+            ["medium", "Medium", "One sentence"],
+            ["hard", "Hard", "2–3 sentences"],
+          ].map(([key, label, description]) => (
+            <button
+              key={key}
+              disabled={busy}
+              aria-pressed={session.difficulty === key}
+              className={session.difficulty === key ? "active" : ""}
+              onClick={() => void changeLevel(key)}
+            >
+              {label}
+              <small>{description}</small>
+            </button>
+          ))}
+        </div>
+        <span className="pill">
+          {session.checked_positions.length} / {session.groups.length} checked
+        </span>
+      </div>
+      <div className="practice-split">
+        <aside className="panel practice-exercises">
+          <div className="practice-exercises-heading">
+            <strong>Exercises</strong>
+            <span className="pill">{session.groups.length}</span>
+          </div>
+          <div className="practice-exercise-list">
+            {session.groups
+              .slice((listPage - 1) * 8, listPage * 8)
+              .map((g, j) => {
+                const i = (listPage - 1) * 8 + j,
+                  done = session.checked_positions.includes(i);
+                return (
+                  <button
+                    key={i}
+                    disabled={busy}
+                    className={`${i === session.position ? "current" : ""} ${done ? "done" : ""}`}
+                    aria-label={`Go to segment ${i + 1}`}
+                    aria-current={i === session.position ? "step" : undefined}
+                    onClick={() => void move(i)}
+                  >
+                    <span className="practice-exercise-number">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span>
+                      <strong>Exercise {String(i + 1).padStart(2, "0")}</strong>
+                      <small>
+                        {done
+                          ? "Checked"
+                          : session.difficulty === "hard"
+                            ? "Listen to consecutive sentences"
+                            : "Listen and write"}
+                      </small>
+                    </span>
+                    {done ? <Check size={14} /> : <ChevronRight size={14} />}
+                  </button>
+                );
+              })}
+          </div>
+          <Pagination
+            page={listPage}
+            count={session.groups.length}
+            size={8}
+            onChange={setListPage}
+          />
+        </aside>
+        <section className="panel practice-session-main">
+          <div className="workspace-heading">
+            <div>
+              <span className="small-label muted">
+                EXERCISE {String(session.position + 1).padStart(2, "0")}
               </span>
+              <h2>Listen and write</h2>
             </div>
-            <AudioPlayer
-              url={session.audio.stream_url}
-              start={interval.start_ms}
-              end={interval.end_ms}
-            />
+            <span className="save-status">
+              <CheckCheck size={14} />
+              {save}
+            </span>
+          </div>
+          <AudioPlayer
+            url={session.audio.stream_url}
+            start={interval.start_ms}
+            end={interval.end_ms}
+          />
+          <div className="practice-answer-scroll">
             <div className="dictation-editor">
-              <label htmlFor="answer">What did you hear?</label>
-              <p className="muted">
-                Play the audio as many times as you need, then write the
-                complete passage.
-              </p>
               {session.difficulty === "easy" &&
                 interval.word_count !== undefined && (
                   <div className="expected-word-count">
-                    <FileText size={17} />
+                    <FileText size={15} />
                     <strong>{interval.word_count} words to listen for</strong>
                     <span>Easy mode</span>
                   </div>
                 )}
+              <label htmlFor="answer">What did you hear?</label>
               <textarea
                 id="answer"
                 value={answer}
@@ -273,43 +350,25 @@ function Workspace({ initial }: { initial: Session }) {
                   setSave("Unsaved");
                   setResult(null);
                 }}
+                onKeyDown={(e) => {
+                  if (
+                    (e.ctrlKey || e.metaKey) &&
+                    e.key === "Enter" &&
+                    !busy &&
+                    answer.trim()
+                  ) {
+                    e.preventDefault();
+                    void check();
+                  }
+                }}
                 placeholder="Start typing what you hear…"
                 disabled={busy}
-                rows={7}
+                rows={4}
                 spellCheck={false}
               />
-              <div className="editor-bottom">
-                <span>
-                  {session.difficulty === "easy"
-                    ? "Take it one chunk at a time."
-                    : "Listen closely, then write the complete passage."}
-                </span>
-                <span>Your answer is saved automatically</span>
-              </div>
-              <div className="editor-actions">
-                <button
-                  className="button primary"
-                  disabled={busy || !answer.trim()}
-                  onClick={() => void check()}
-                >
-                  <Check size={18} />
-                  {busy ? "Saving…" : "Check Answer"}
-                </button>
-                <button className="button subtle" onClick={() => void reveal()}>
-                  <Lightbulb size={17} />
-                  Show Hint
-                </button>
-                <button
-                  className="button subtle"
-                  onClick={() => void reveal(true)}
-                >
-                  <Eye size={17} />
-                  Reveal Transcript
-                </button>
-              </div>
               {hint && (
                 <div className="hint-box">
-                  <Lightbulb size={18} />
+                  <Lightbulb size={16} />
                   {hint}
                 </div>
               )}
@@ -325,78 +384,64 @@ function Workspace({ initial }: { initial: Session }) {
                       setHint("");
                     }}
                   >
-                    <RotateCcw size={15} />
+                    <RotateCcw size={14} />
                     Try Again
                   </button>
                 </>
               )}
             </div>
-            <div className="workspace-navigation">
-              <button
-                className="button secondary"
-                disabled={session.position === 0 || busy}
-                onClick={() => void move(session.position - 1)}
-              >
-                <ChevronLeft size={18} />
-                Previous Segment
-              </button>
-              <button
-                className="button primary"
-                disabled={
-                  session.position === session.groups.length - 1 || busy
-                }
-                onClick={() => void move(session.position + 1)}
-              >
-                Next Segment
-                <ChevronRight size={18} />
-              </button>
-            </div>
-          </section>
-        </div>
-        <aside className="workspace-aside">
-          <section className="panel">
-            <h3>Your session</h3>
-            <p className="muted">A little progress with every sentence.</p>
-            <div className="progress-caption">
-              {session.checked_positions.length} of {session.groups.length}{" "}
-              checked
-            </div>
-            <div className="progress-track">
-              <i
-                style={{
-                  width: `${(session.checked_positions.length / session.groups.length) * 100}%`,
-                }}
-              />
-            </div>
-            <div className="segment-grid">
-              {session.groups.map((_, i) => (
-                <button
-                  key={i}
-                  disabled={busy}
-                  className={`${i === session.position ? "current" : ""} ${session.checked_positions.includes(i) ? "done" : ""}`}
-                  onClick={() => void move(i)}
-                  aria-label={`Go to segment ${i + 1}`}
-                  aria-current={i === session.position ? "step" : undefined}
-                >
-                  {session.checked_positions.includes(i) ? (
-                    <Check size={16} />
-                  ) : (
-                    i + 1
-                  )}
-                </button>
-              ))}
-            </div>
-          </section>
-          <div className="practice-tip">
-            <Lightbulb size={23} />
-            <h3>Listen for the little things</h3>
-            <p>
-              Articles, endings and connecting words are easy to miss. Replay
-              slowly, then return to normal speed.
-            </p>
           </div>
-        </aside>
+          <div className="practice-check-actions">
+            <div>
+              <button
+                className="text-link"
+                disabled={busy}
+                onClick={() => void reveal()}
+              >
+                <Lightbulb size={14} />
+                Show Hint
+              </button>
+              <button
+                className="text-link"
+                disabled={busy}
+                onClick={() => void reveal(true)}
+              >
+                <Eye size={14} />
+                Reveal Transcript
+              </button>
+            </div>
+            <button
+              className="button primary"
+              disabled={busy || !answer.trim()}
+              onClick={() => void check()}
+            >
+              <Check size={16} />
+              {busy ? "Saving…" : "Check Answer"}
+            </button>
+          </div>
+          <div className="workspace-navigation">
+            <button
+              className="button secondary"
+              disabled={session.position === 0 || busy}
+              onClick={() => void move(session.position - 1)}
+            >
+              <ChevronLeft size={15} />
+              Previous Segment
+            </button>
+            <span className="muted">
+              {session.position + 1} / {session.groups.length}
+            </span>
+            <button
+              className="button secondary"
+              disabled={session.position === session.groups.length - 1 || busy}
+              onClick={() => void move(session.position + 1)}
+            >
+              Next Segment
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </section>
       </div>
-    </>
+    </div>
   );
 }

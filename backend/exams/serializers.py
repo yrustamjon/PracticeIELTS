@@ -272,9 +272,14 @@ class QuestionSetInput(serializers.Serializer):
         numbers = [q["number"] for q in value]
         if len(numbers) != len(set(numbers)):
             raise serializers.ValidationError("Question numbers must be unique.")
-        if sorted(numbers) != list(range(1, len(numbers) + 1)):
+        part = self.context.get("assigned_part")
+        allowed_starts = {1, (part - 1) * 10 + 1} if part else {1}
+        if not any(
+            sorted(numbers) == list(range(start, start + len(numbers)))
+            for start in allowed_starts
+        ):
             raise serializers.ValidationError(
-                "Use consecutive question numbers beginning at 1."
+                "Use consecutive numbers starting at 1 or at this Part's IELTS question number."
             )
         return value
 

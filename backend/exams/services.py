@@ -113,6 +113,15 @@ def save_question_set(material, validated, user):
                 "document_pages": "Select the question pages students may view; omit answer-key pages."
             }
         )
+    from learning.models import TestPart
+
+    assigned = TestPart.objects.filter(material=material).first()
+    if assigned:
+        validated = __import__("copy").deepcopy(validated)
+        for question in validated["questions"]:
+            question["part"] = assigned.number
+        for section in validated["sections"]:
+            section["part"] = assigned.number
     with transaction.atomic():
         qs = QuestionSet.objects.create(
             material=material,
@@ -194,9 +203,26 @@ def active_material_ids(user):
     )
     for pk in expired.values_list("pk", flat=True):
         finalize_attempt(pk)
-    return MockAttempt.objects.filter(user=user, submitted_at__isnull=True).values_list(
-        "material_id", flat=True
+    from django.db.models import Q
+
+    from learning.models import ListeningTest, TestPart
+
+    active = set(
+        MockAttempt.objects.filter(user=user, submitted_at__isnull=True).values_list(
+            "material_id", flat=True
+        )
     )
+    tests = ListeningTest.objects.filter(
+        Q(full_material_id__in=active) | Q(parts__material_id__in=active)
+    )
+    ids = list(tests.values_list("pk", flat=True))
+    active.update(
+        tests.exclude(full_material=None).values_list("full_material_id", flat=True)
+    )
+    active.update(
+        TestPart.objects.filter(test_id__in=ids).values_list("material_id", flat=True)
+    )
+    return active
 
 
 def guard_study(user, material_id):
@@ -216,6 +242,13 @@ def attempt_data(attempt):
     questions = list(
         qs.questions.select_related("answer_key").prefetch_related("options")
     )
+    from learning.models import TestPart
+
+    assigned = (
+        TestPart.objects.filter(material_id=attempt.material_id)
+        .values_list("number", flat=True)
+        .first()
+    )
     submitted = bool(attempt.submitted_at)
     data = {
         "id": attempt.pk,
@@ -228,13 +261,21 @@ def attempt_data(attempt):
         "submitted_at": attempt.submitted_at,
         "answers": attempt.answers,
         "audio_started": bool(attempt.audio_started_at),
-        "questions": [public_question(q, submitted) for q in questions],
+        "questions": [
+            {
+                **public_question(q, submitted),
+                **({"part": assigned} if assigned else {}),
+            }
+            for q in questions
+        ],
         "document_pages": qs.document_pages
         if qs.document_id and qs.presentation in ("pdf", "legacy_pdf")
         else [],
         "presentation": qs.presentation,
         "score": attempt.score,
-        "sections": qs.sections,
+        "sections": [{**s, "part": assigned} for s in qs.sections]
+        if assigned
+        else qs.sections,
         "total": len(questions),
     }
     if submitted:

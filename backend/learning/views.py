@@ -114,6 +114,8 @@ class MaterialViewSet(viewsets.ModelViewSet):
             )
         if self.request.query_params.get("mock_available") == "true":
             q = q.filter(published_questions__isnull=False)
+        if self.request.query_params.get("standalone") == "true":
+            q = q.filter(test_part__isnull=True, full_test__isnull=True)
         return q.distinct()
 
     def retrieve(self, request, *args, **kwargs):
@@ -169,7 +171,12 @@ class MaterialViewSet(viewsets.ModelViewSet):
         material = self.editor_material(request)
         if request.method == "GET":
             return Response(question_set_data(material.question_sets.first()))
-        serializer = QuestionSetInput(data=request.data)
+        from .models import TestPart
+
+        part = TestPart.objects.filter(material=material).first()
+        serializer = QuestionSetInput(
+            data=request.data, context={"assigned_part": part.number if part else None}
+        )
         serializer.is_valid(raise_exception=True)
         qs = save_question_set(material, serializer.validated_data, request.user)
         return Response(question_set_data(qs), status=201)
@@ -263,6 +270,13 @@ class MaterialViewSet(viewsets.ModelViewSet):
         )
         AuditLog.objects.create(
             actor=request.user, material=material, action="audio.upload"
+        )
+        from .models import ListeningTest
+
+        ListeningTest.objects.filter(full_material=material).update(
+            assembly_signature=[],
+            assembly_state="ready" if material.published_version_id else "waiting",
+            assembly_error="",
         )
         job = queue_job(asset, request.user, reference)
         return Response(
@@ -452,17 +466,29 @@ class MaterialViewSet(viewsets.ModelViewSet):
                 }
             )
         with transaction.atomic():
-            if question_set:
+            if question_set and not question_set.published_at:
                 question_set.published_at = timezone.now()
                 question_set.save(update_fields=["published_at"])
             material.published_questions = question_set
-            version.published_at = timezone.now()
-            version.save(update_fields=["published_at"])
+            if not version.published_at:
+                version.published_at = timezone.now()
+                version.save(update_fields=["published_at"])
             material.published_version = version
             material.save()
             AuditLog.objects.create(
                 actor=request.user, material=material, action="material.publish"
             )
+        from .models import TestPart
+        from .test_assembly import queue_assembly
+
+        part = TestPart.objects.filter(material=material).first()
+        if part:
+            transaction.on_commit(lambda: queue_assembly(part.test_id))
+        from .models import ListeningTest
+
+        ListeningTest.objects.filter(full_material=material).update(
+            assembly_signature=[], assembly_state="ready", assembly_error=""
+        )
         return Response(self.get_serializer(material).data)
 
 

@@ -336,3 +336,10 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Verification: Each file opens directly without npm/backend; interaction/browser and mobile checks; ZIP integrity; deliver individual files as completed.
 
 - Evidence (2026-10-25): Five self-contained HTML proposals plus index/README delivered individually. Browser flows passed for nested navigation, mode selection, admin validation/full readiness, real embedded sample audio, Practice word alignment/paging/levels, and Mock persistence/scoring/timer expiry/exit. All six pages passed desktop and 390/360px overflow checks without external requests or JS errors. Inline syntax/local-link audit and seven-file ZIP integrity passed. Browser tests used localhost because managed Chromium blocks file URLs; files contain no external runtime dependencies.
+
+## Design integration / UX-06 — Bring the approved HTML flow into the real app
+- Status: Completed
+- Request: Pull Git changes and implement the demonstrated library, test/part selector, segmented admin and compact paginated Practice.
+- Acceptance: Persistent source → book → test hierarchy; individual Part authoring and study; Full test assembled from four reviewed/published Parts; clear loading/failure/readiness states; preserve existing standalone materials, immutable versions and permissions; actual API-backed UI matching the review demos; bounded Practice list/editor; passing relevant server, client and browser checks before pushing main.
+
+- Evidence (2026-10-25): 68 PostgreSQL backend tests including real local ASR, 17 frontend tests, production build and all 8 browser workflows passed. Coverage includes ownership/draft visibility, real four-Part audio/word-offset assembly, text/HTML/PDF question copying, approved pages only, version pins, plain failure states preserving prior releases, direct Full authoring and preserved assembly mode on editor open, IELTS Part numbering, nested navigation, active-Mock resume, persisted paginated Practice and laptop/mobile geometry. Django/schema/migration drift/Ruff/diff checks passed.

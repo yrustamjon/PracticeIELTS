@@ -6,6 +6,7 @@ import {
   useNavigate,
   useParams,
   useBlocker,
+  useSearchParams,
 } from "react-router-dom";
 import {
   Plus,
@@ -51,7 +52,7 @@ function Studio() {
   });
   const materials = useQuery({
     queryKey: ["admin-materials"],
-    queryFn: () => api<{ results: Material[] }>("materials/"),
+    queryFn: () => api<{ results: Material[] }>("materials/?standalone=true"),
   });
   async function categorySave(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -388,6 +389,20 @@ function Editor({
   const [dirty, setDirty] = useState(false);
   const [detailsDirty, setDetailsDirty] = useState(false);
   const [questionDirty, setQuestionDirty] = useState(false);
+  const [stepParams, setStepParams] = useSearchParams();
+  const editorStep = stepParams.get("step") || "material-details";
+  const editorSteps = [
+    "material-details",
+    "material-audio",
+    "material-questions",
+    "material-review",
+    "material-publish",
+  ];
+  function goStep(target: string) {
+    const n = new URLSearchParams(stepParams);
+    n.set("step", target);
+    setStepParams(n, { replace: true });
+  }
   const [reference, setReference] = useState("");
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -537,8 +552,15 @@ function Editor({
     retry_wait: "Waiting to retry",
   };
   return (
-    <>
-      <Link className="back-link" to="/admin">
+    <div className="stepped-editor" data-step={editorStep}>
+      <Link
+        className="back-link"
+        to={
+          m.test_part || m.full_test
+            ? `/admin?category=${m.category}&test=${m.test_part?.test || m.full_test}`
+            : "/admin/materials"
+        }
+      >
         <ArrowLeft size={17} />
         Back to Content Studio
       </Link>
@@ -556,10 +578,15 @@ function Editor({
           ["material-review", "4", "Review"],
           ["material-publish", "5", "Publish"],
         ].map(([target, number, label]) => (
-          <a key={target} href={`#${target}`}>
+          <button
+            key={target}
+            className={editorStep === target ? "active" : ""}
+            aria-current={editorStep === target ? "step" : undefined}
+            onClick={() => goStep(target)}
+          >
             <span>{number}</span>
             {label}
-          </a>
+          </button>
         ))}
       </nav>
       {error != null && <ErrorState error={error} />}
@@ -760,6 +787,7 @@ function Editor({
           </section>
           <QuestionStudio
             materialId={m.id}
+            assignedPart={m.test_part?.number}
             audioReady={!!audio}
             audioId={audio?.id}
             onSaved={onSaved}
@@ -980,6 +1008,35 @@ function Editor({
           </section>
         </aside>
       </div>
-    </>
+      <div className="studio-wizard-navigation">
+        <button
+          className="button secondary"
+          disabled={editorStep === editorSteps[0]}
+          onClick={() =>
+            goStep(
+              editorSteps[Math.max(0, editorSteps.indexOf(editorStep) - 1)],
+            )
+          }
+        >
+          <ArrowLeft size={15} />
+          Previous
+        </button>
+        <span>
+          {Math.max(1, editorSteps.indexOf(editorStep) + 1)} / 5 steps
+        </span>
+        <button
+          className="button primary"
+          disabled={editorStep === editorSteps[4]}
+          onClick={() =>
+            goStep(
+              editorSteps[Math.min(4, editorSteps.indexOf(editorStep) + 1)],
+            )
+          }
+        >
+          Next step
+          <ChevronRight size={15} />
+        </button>
+      </div>
+    </div>
   );
 }

@@ -30,10 +30,12 @@ import {
 import { useAuth } from "../stores/auth";
 import { api, post, restore, type User } from "../services/api";
 import { Loading, ErrorState } from "../components/ui";
-import { MockLibrary, MockPage, MockResults } from "../features/Mock";
+import { MockPage, MockResults } from "../features/Mock";
 import { FutureModule } from "../features/Learning";
 import { Dashboard } from "../features/Dashboard";
-import { Library, MaterialDetail } from "../features/Library";
+import { MaterialDetail } from "../features/Library";
+import { NestedLibrary, TestDetail } from "../features/Catalog";
+import { TestStudio } from "../features/TestStudio";
 import { Practice } from "../features/Practice";
 import { Admin } from "../features/Admin";
 import {
@@ -73,7 +75,7 @@ function Shell() {
     window.scrollTo(0, 0);
     setDrawer(false);
     setProfile(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
   useEffect(() => {
     function close(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -412,19 +414,27 @@ export function App() {
       />
       <Route element={<Protected />}>
         <Route index element={<Dashboard />} />
-        <Route path="library" element={<Library />} />
+        <Route path="library" element={<NestedLibrary />} />
         <Route path="library/:id" element={<MaterialDetail />} />
-        <Route path="dictation" element={<Library dictation />} />
+        <Route
+          path="dictation"
+          element={<NestedLibrary defaultMode="practice" />}
+        />
         <Route path="practice/:id" element={<Practice />} />
         <Route path="transcript/:id" element={<Transcript />} />
         <Route path="progress" element={<ProgressPage />} />
         <Route path="mistakes" element={<Mistakes />} />
-        <Route path="mock-tests" element={<MockLibrary />} />
+        <Route
+          path="mock-tests"
+          element={<NestedLibrary defaultMode="mock" />}
+        />
         <Route path="mock/:id" element={<MockPage />} />
         <Route path="mock/:id/results" element={<MockResults />} />
         <Route path="future/:module" element={<FutureModule />} />
         <Route path="profile" element={<Profile />} />
-        <Route path="admin" element={<Admin />} />
+        <Route path="admin" element={<TestStudio />} />
+        <Route path="admin/materials" element={<Admin />} />
+        <Route path="tests/:id" element={<TestDetail />} />
         <Route path="admin/:id" element={<Admin />} />
         <Route
           path="*"

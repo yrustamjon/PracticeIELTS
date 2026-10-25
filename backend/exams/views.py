@@ -20,6 +20,7 @@ from learning.models import Material
 from .models import MockAttempt, QuestionDocument
 from .pdf_layout import isolated_pdf_page
 from .services import (
+    active_material_ids,
     attempt_data,
     exam_audio_response,
     expire_if_needed,
@@ -109,6 +110,12 @@ class MockAttemptViewSet(viewsets.ViewSet):
             ).first()
             if existing:
                 return Response(attempt_data(existing))
+            if material.pk in active_material_ids(request.user):
+                raise ValidationError(
+                    {
+                        "detail": "Finish the active Mock in this test before starting another Part or Full test."
+                    }
+                )
             qs = material.published_questions
             attempt = MockAttempt.objects.create(
                 user=request.user,

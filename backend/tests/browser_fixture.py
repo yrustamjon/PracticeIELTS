@@ -24,9 +24,11 @@ from learning.models import (
     AudioAsset,
     AuditLog,
     Category,
+    ListeningTest,
     Material,
     PracticeSession,
     Segment,
+    TestPart,
     TranscriptVersion,
 )
 from processing.models import ProcessingJob
@@ -299,10 +301,67 @@ elif sys.argv[1] in ("create_text_mock", "create_compact_mock"):
     material.published_questions = qs
     material.save(update_fields=["published_version", "published_questions"])
     print(material.pk)
+elif sys.argv[1] == "create_long_practice":
+    import io
+    import wave
+
+    from django.core.files.base import ContentFile
+    from django.utils import timezone
+
+    # Repeated original speech, with offsets measured from actual PCM frame counts.
+    with wave.open(os.environ["TEST_RECORDING"], "rb") as source:
+        params = source.getparams()
+        frames = source.readframes(source.getnframes())
+        count = source.getnframes()
+        rate = source.getframerate()
+    output = io.BytesIO()
+    with wave.open(output, "wb") as target:
+        target.setparams(params)
+        for _ in range(30):
+            target.writeframes(frames)
+    owner = User.objects.get(username=teacher)
+    category, _ = Category.objects.get_or_create(
+        name="Auto Speech " + teacher.removeprefix("teacher_")
+    )
+    material = Material.objects.create(
+        title="Original repeated speech " + teacher.removeprefix("teacher_"),
+        category=category,
+        owner=owner,
+        source="Original synthesized speech",
+        license="Original fixture permission",
+        rights_confirmed=True,
+    )
+    audio = AudioAsset.objects.create(
+        material=material,
+        file=ContentFile(output.getvalue(), name="original-repeated.wav"),
+        duration_ms=round(count * 30 * 1000 / rate),
+        mime_type="audio/wav",
+        size=len(output.getvalue()),
+    )
+    version = TranscriptVersion.objects.create(
+        material=material, audio=audio, published_at=timezone.now()
+    )
+    Segment.objects.bulk_create(
+        [
+            Segment(
+                version=version,
+                position=i,
+                text="Welcome to our library. The books are upstairs.",
+                start_ms=round(i * count * 1000 / rate),
+                end_ms=round((i + 1) * count * 1000 / rate),
+            )
+            for i in range(30)
+        ]
+    )
+    material.published_version = version
+    material.save()
+    print(material.pk)
 elif sys.argv[1] == "cleanup":
     with transaction.atomic():
         users = User.objects.filter(username__in=[teacher, student])
         materials = Material.objects.filter(owner__in=users)
+        TestPart.objects.filter(test__owner__in=users).delete()
+        ListeningTest.objects.filter(owner__in=users).delete()
         MockAttempt.objects.filter(material__in=materials).delete()
         PracticeSession.objects.filter(user__in=users).delete()
         materials.update(published_version=None, published_questions=None)
@@ -331,6 +390,12 @@ elif sys.argv[1] == "cleanup":
                 "Auto Speech " + teacher.removeprefix("teacher_"),
                 "Full Mock " + teacher.removeprefix("teacher_"),
             ]
+        ).delete()
+        Category.objects.filter(
+            name="Review book " + teacher.removeprefix("teacher_")
+        ).delete()
+        Category.objects.filter(
+            name="Review collection " + teacher.removeprefix("teacher_")
         ).delete()
         users.delete()
 else:

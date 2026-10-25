@@ -27,3 +27,13 @@ QuestionSet.sections stores bounded, sanitized [{part,html}] content in each imm
 
 ## Bounded exam viewport and scoped PDF styles
 The active exam shell is a viewport-height flex column. Toolbar and the portal-hosted question navigation occupy fixed layout space; main question content alone scrolls. Review controls/counters are removed from active Mock. Current-part PDF pages render in an approved-page stack or responsive two-column grid, with deferred loading as pages approach the viewport. Only PDF text-layer CSS scoped beneath .pdf-original-page is imported; full pdf_viewer.css is excluded because its global .sidebar rules corrupt the normal app after a PDF component is loaded.
+
+## Approved collection/test workflow
+
+`ListeningTest` belongs to a category/book and owner. `TestPart` binds exactly one Material to a test/Part number (1–4), enforced with uniqueness/range constraints. Existing standalone Materials retain their routes, versions and student history. The Material editor is presented in separate steps, while library/test/admin pages use the approved nested card layout.
+
+Publication of four Parts schedules `learning.tasks.assemble_listening_test`. The worker serializes the test and its Part material rows, captures published version/question-set IDs, decodes actual whole recordings with FFmpeg and joins their PCM frames. Frame-derived offsets rebase transcript/word times. Text/HTML/PDF question versions are copied with sequential Full numbering; PDF output contains only approved pages with rebased field geometry. No speech recognition results or timestamps are invented by assembly. Source Part assets and historical publications remain intact. A directly authored Full recording has an empty assembly signature and is not replaced by automatic Part updates; explicit assembly remains available through the API.
+
+Assembly failures preserve the prior Full publication and report an editor-visible error/retry state. A test with four transcripts but incomplete questions offers Full Practice only. Mixing question presentations requires correction before Full question assembly. Book/test/Part writes enforce ownership in addition to role checks. Active-exam guards expand to all recordings within the test so sibling Practice/transcripts cannot reveal its answers.
+
+The real Practice workspace is bounded on desktop: paginated exercise list, fixed audio/check/navigation and an independently scrolling editor/feedback area. Difficulty switches and navigation await persisted drafts and retain version-pinned server behavior. Main route/query navigation resets document scroll; exercise pagination uses its own list state. Mock libraries retain explicit links to active attempts.
