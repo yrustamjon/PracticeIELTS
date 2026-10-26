@@ -398,3 +398,20 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Scope: Admin/staff only; authenticated server checks; editable seconds with preview; persisted Easy timing revisions pinned by sessions; keep published transcripts, other difficulties, existing student sessions and unrelated user edits intact.
 - Verification: Permission and mode rejection, exact chunk persistence, input/boundary validation, revision conflicts, student history/resume, component interaction and production build.
 - Evidence (2026-10-25, local SQLite): 109 passed, 1 skipped; 35 passed; 1 live browser workflow passed; production typecheck/build, Django check, migration drift check, strict OpenAPI, Ruff and diff checks passed. Migration 0006 is applied locally.
+
+## OPS-01 — Local database and referenced-file backup
+- Status: Completed
+- Scope: consistent SQLite snapshot and all database FileField references, lossless archive, checksums and restore instructions; exclude unrelated media/cache/dependencies.
+- Verification: database integrity, foreign keys and archive member checksums.
+- Evidence: backups/PracticeIELTS_20261026T033213Z.zip; 87 referenced files plus consistent database; 621,966,763 input bytes → 461,614,870 ZIP bytes. Every archived file SHA-256 verified; extracted SQLite integrity_check=ok and foreign_key_check empty. Restore notes/manifest included.
+
+## CONTENT-03 — Import prepared Cambridge 11–14 question/key PDFs from Drive
+- Status: Completed (draft import; publication review remains)
+- Scope: verify source PDF questions/keys and Cambridge 12 numbering; create missing Part question drafts through existing validation/services; preserve existing publications and unrelated records.
+- Verification: source mapping, complete question/key counts, import idempotence and private document access.
+- Evidence: 64 draft sets, 640 keys, 104 private PDF pages; all source embedded images byte-identical, render checks passed (minor watermark antialias differences allowed for Cambridge 14). Added answer columns without changing original question regions. Import replay: 0 new sets / 0 database writes. 23 unordered answer pairs flagged because existing scorer does not enforce distinctness.
+
+## EXAM-PAIR-01 — Distinct unordered answer-pair scoring
+- Status: In Progress
+- Scope: score grouped answers once per distinct valid response; consistent total and per-question results; validate group metadata and preserve groups when assembling Full tests.
+- Acceptance: A/C and C/A score 2, A/B and A/A score 1, B/D score 0; unrelated questions and historical submissions preserved.

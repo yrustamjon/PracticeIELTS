@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from .answer_groups import answer_groups
 from .html_paper import MARKER, sanitize
 from .models import Question, QuestionDocument
 
@@ -266,6 +267,7 @@ class QuestionSetInput(serializers.Serializer):
                 raise serializers.ValidationError(
                     {"context": "Provide the completion table as text rows and cells."}
                 )
+        answer_groups(data["questions"])
         return data
 
     def validate_questions(self, value):

@@ -126,13 +126,19 @@ def merge_questions(test, parts, full, audio, files):
     )
     sections, number = [], 0
     for i, (part, source) in enumerate(zip(parts, sets)):
-        numbers = {}
-        for q in source.questions.select_related("answer_key").prefetch_related(
-            "options"
-        ):
+        source_questions = list(
+            source.questions.select_related("answer_key").prefetch_related("options")
+        )
+        numbers = {
+            q.number: number + offset for offset, q in enumerate(source_questions, 1)
+        }
+        for q in source_questions:
             number += 1
-            numbers[q.number] = number
             context = copy.deepcopy(q.context)
+            if "answer_group" in context:
+                context["answer_group"]["numbers"] = [
+                    numbers[n] for n in context["answer_group"]["numbers"]
+                ]
             if presentation == "pdf":
                 context["pdf_field"]["page"] = page_maps[i][
                     context["pdf_field"]["page"]

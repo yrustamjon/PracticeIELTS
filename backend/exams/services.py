@@ -13,6 +13,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from learning.models import AuditLog
 from learning.services.comparison import words
 
+from .answer_groups import answer_groups
 from .models import AnswerKey, MockAttempt, Question, QuestionOption, QuestionSet
 
 
@@ -165,6 +166,32 @@ def score_question(question, answer):
     )
 
 
+def score_questions(questions, answers):
+    """Credit a valid letter once per group, assigning ties to the lower slot."""
+    results = {
+        q.number: score_question(q, answers.get(str(q.number), "")) for q in questions
+    }
+    groups = answer_groups(
+        [
+            {
+                "number": q.number,
+                "part": q.part,
+                "context": q.context,
+                "answers": q.answer_key.accepted_answers,
+            }
+            for q in questions
+        ]
+    )
+    for numbers in groups:
+        credited = set()
+        for number in numbers:
+            if results[number]:
+                letter = normalize(answers[str(number)])
+                results[number] = letter not in credited
+                credited.add(letter)
+    return results
+
+
 def finalize_attempt(attempt_id, user=None):
     with transaction.atomic():
         attempt = (
@@ -178,9 +205,8 @@ def finalize_attempt(attempt_id, user=None):
             return attempt
         questions = list(attempt.question_set.questions.select_related("answer_key"))
         attempt.total = len(questions)
-        attempt.score = sum(
-            score_question(q, attempt.answers.get(str(q.number), "")) for q in questions
-        )
+        attempt.score = sum(score_questions(questions, attempt.answers).values())
+        attempt.scoring_version = 2
         attempt.submitted_at = timezone.now()
         attempt.save()
         return attempt
@@ -279,10 +305,18 @@ def attempt_data(attempt):
         "total": len(questions),
     }
     if submitted:
+        correctness = (
+            score_questions(questions, attempt.answers)
+            if attempt.scoring_version >= 2
+            else {
+                q.number: score_question(q, attempt.answers.get(str(q.number), ""))
+                for q in questions
+            }
+        )
         data["results"] = [
             {
                 "number": q.number,
-                "correct": score_question(q, attempt.answers.get(str(q.number), "")),
+                "correct": correctness[q.number],
                 "answer": attempt.answers.get(str(q.number), ""),
                 "accepted_answers": q.answer_key.accepted_answers,
             }

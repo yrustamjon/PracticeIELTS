@@ -20,3 +20,6 @@ backend/media
 
 # Reproducible local PDF.js font/CMap/codec assets
 frontend/public/pdfjs/
+
+# Private local database/media backups
+/backups/

@@ -122,6 +122,7 @@ class MockAttempt(models.Model):
     submitted_at = models.DateTimeField(null=True, blank=True)
     answers = models.JSONField(default=dict)
     score = models.PositiveSmallIntegerField(null=True, blank=True)
+    scoring_version = models.PositiveSmallIntegerField(default=1)
     total = models.PositiveSmallIntegerField(default=0)
     audio_ticket_hash = models.CharField(max_length=64, blank=True)
     audio_ticket_expires = models.DateTimeField(null=True, blank=True)
