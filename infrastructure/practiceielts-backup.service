@@ -1,0 +1,22 @@
+[Unit]
+Description=PracticeIELTS verified private database and media backup to Google Drive
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+WorkingDirectory=/home/PracticeIELTS
+ExecStart=/usr/bin/python3 /home/PracticeIELTS/infrastructure/nightly-backup.py
+StateDirectory=practiceielts-backup
+StateDirectoryMode=0700
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=6h
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/practiceielts-backup
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

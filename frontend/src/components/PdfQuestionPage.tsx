@@ -1,3 +1,5 @@
+import { PdfHighlights } from "./PdfHighlights";
+import { ReviewFeedback } from "./ReviewFeedback";
 import { useEffect, useRef, useState } from "react";
 import {
   getDocument,
@@ -59,6 +61,12 @@ export default function PdfQuestionPage({
   const [size, setSize] = useState({ width: 700, height: 950 });
   const start = useRef<{ x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<PdfField | null>(null);
+  const [placing, setPlacing] = useState(false);
+  useEffect(() => {
+    setPlacing(false);
+    start.current = null;
+    setSelection(null);
+  }, [path, selectedNumber]);
   useEffect(() => {
     if (!host.current) return;
     const observer = new ResizeObserver(([entry]) =>
@@ -178,6 +186,25 @@ export default function PdfQuestionPage({
         </div>
       </div>
       {error != null && <ErrorState error={error} />}
+      {onPlace && selectedNumber && (
+        <div className="pdf-placement-tools">
+          <button
+            type="button"
+            className="button secondary"
+            aria-pressed={placing}
+            onClick={() => {
+              setPlacing((value) => !value);
+              start.current = null;
+              setSelection(null);
+            }}
+          >
+            {placing ? "Cancel field placement" : `Place answer field ${selectedNumber}`}
+          </button>
+          <span role="status">
+            {placing ? "Drag a rectangle over the answer blank. Scrolling resumes when finished." : "Scroll the paper freely. Tap Place answer field to edit a blank."}
+          </span>
+        </div>
+      )}
       {!ready && error == null && (
         <p className="muted" role="status">
           Opening original PDF…
@@ -185,10 +212,10 @@ export default function PdfQuestionPage({
       )}
       <div className="pdf-scroll">
         <div
-          className={`pdf-original-page ${onPlace ? "pdf-placing" : ""}`}
+          className={`pdf-original-page ${onPlace && placing ? "pdf-placing" : ""}`}
           style={{ width: size.width, height: size.height }}
           onPointerDown={(e) => {
-            if (!onPlace || !selectedNumber) return;
+            if (!onPlace || !selectedNumber || !placing || e.button !== 0) return;
             e.preventDefault();
             e.currentTarget.setPointerCapture(e.pointerId);
             start.current = point(e);
@@ -224,6 +251,7 @@ export default function PdfQuestionPage({
             });
             start.current = null;
             setSelection(null);
+            setPlacing(false);
           }}
           onPointerCancel={() => {
             start.current = null;
@@ -236,6 +264,7 @@ export default function PdfQuestionPage({
             style={{ width: size.width, height: size.height }}
           />
           <div ref={text} className="textLayer" />
+          {!onPlace && <PdfHighlights path={path} />}
           {questions.map((q) => {
             const field = q.context.pdf_field as PdfField | undefined;
             if (!field || field.page !== pageNumber) return null;
@@ -316,6 +345,7 @@ export default function PdfQuestionPage({
                     onChange={(e) => onAnswer?.(q.number, e.target.value)}
                   />
                 )}
+                <ReviewFeedback number={q.number} />
               </div>
             );
           })}

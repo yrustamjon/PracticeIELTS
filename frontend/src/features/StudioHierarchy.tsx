@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -53,6 +53,8 @@ export function BookHierarchy({
     [term, setTerm] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const navigationId = useId();
   const current = useRef<HTMLButtonElement | null>(null);
   const categories = useQuery({
     queryKey: ["categories", "all"],
@@ -86,7 +88,8 @@ export function BookHierarchy({
   }
   function choose(category: number, test?: number) {
     setTerm("");
-    navigate(`/admin?category=${category}${test ? `&test=${test}` : ""}`);
+    setMobileOpen(false);
+    navigate(`/admin/content?category=${category}${test ? `&test=${test}` : ""}`);
   }
   async function openPart(t: ListeningTest, n: number) {
     const p = t.parts.find((p) => p.number === n);
@@ -189,11 +192,7 @@ export function BookHierarchy({
   }
   function branch(parent: number | null, seen = new Set<number>()): ReactNode {
     return (categories.data || [])
-      .filter(
-        (c) =>
-          (c.parent || null) === parent &&
-          !seen.has(c.id),
-      )
+      .filter((c) => (c.parent || null) === parent && !seen.has(c.id))
       .map((c) => {
         const open = expanded.has("c" + c.id),
           path = categoryPath(categories.data || [], effectiveCategory),
@@ -228,9 +227,7 @@ export function BookHierarchy({
             {open && (
               <ul>
                 {branch(c.id, next)}
-                {tests.data
-                  ?.filter((t) => t.category === c.id)
-                  .map(testNode)}
+                {tests.data?.filter((t) => t.category === c.id).map(testNode)}
               </ul>
             )}
           </li>
@@ -238,74 +235,91 @@ export function BookHierarchy({
       });
   }
   return (
-    <aside className="panel studio-tree book-hierarchy">
+    <aside
+      className={`panel studio-tree book-hierarchy ${mobileOpen ? "mobile-expanded" : ""}`}
+    >
       <div className="studio-tree-head">
-        <strong>Your books</strong>
+        <strong className="hierarchy-desktop-title">Your books</strong>
+        <button
+          type="button"
+          className="hierarchy-mobile-trigger"
+          aria-expanded={mobileOpen}
+          aria-controls={navigationId}
+          onClick={() => setMobileOpen((open) => !open)}
+        >
+          <BookOpen size={18} />
+          <span>
+            {mobileOpen ? "Hide books and tests" : "Browse books and tests"}
+          </span>
+          <ChevronRight size={18} />
+        </button>
       </div>
-      <label className="studio-tree-search">
-        <Search size={15} />
-        <input
-          aria-label="Find a book or test"
-          placeholder="Find a book or test…"
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-        />
-      </label>
-      <nav className="studio-tree-scroll" aria-label="Book hierarchy">
-        {categories.isPending ? (
-          <Loading />
-        ) : categories.error ? (
-          <ErrorState error={categories.error} />
-        ) : (
-          <ul>
-            {term ? (
-              <>
-                {categories.data
-                  .filter((c) =>
-                    c.name.toLowerCase().includes(term.toLowerCase()),
-                  )
-                  .map((c) => (
-                    <li key={c.id}>
-                      <button
-                        className="hierarchy-search-result"
-                        onClick={() => choose(c.id)}
-                      >
-                        <BookOpen size={14} />
-                        <span>{c.name}</span>
-                      </button>
-                    </li>
-                  ))}
-                {tests.data
-                  ?.filter((t) =>
-                    t.title.toLowerCase().includes(term.toLowerCase()),
-                  )
-                  .map((t) => (
-                    <li key={"s" + t.id}>
-                      <button
-                        className="hierarchy-search-result"
-                        onClick={() => choose(t.category, t.id)}
-                      >
-                        <FileText size={14} />
-                        <span>
-                          {t.title}
-                          <small>{t.category_name}</small>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-              </>
-            ) : (
-              branch(null)
-            )}
-          </ul>
-        )}
-        {tests.isPending && (
-          <span className="hierarchy-loading">Loading tests…</span>
-        )}
-        {tests.error && <ErrorState error={tests.error} />}{" "}
-        {error != null && <ErrorState error={error} />}
-      </nav>
-      <div className="studio-tree-bottom">Book → Volume → Test → Parts</div>
+      <div id={navigationId} className="hierarchy-content">
+        <label className="studio-tree-search">
+          <Search size={15} />
+          <input
+            aria-label="Find a book or test"
+            placeholder="Find a book or test…"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+          />
+        </label>
+        <nav className="studio-tree-scroll" aria-label="Book hierarchy">
+          {categories.isPending ? (
+            <Loading />
+          ) : categories.error ? (
+            <ErrorState error={categories.error} />
+          ) : (
+            <ul>
+              {term ? (
+                <>
+                  {categories.data
+                    .filter((c) =>
+                      c.name.toLowerCase().includes(term.toLowerCase()),
+                    )
+                    .map((c) => (
+                      <li key={c.id}>
+                        <button
+                          className="hierarchy-search-result"
+                          onClick={() => choose(c.id)}
+                        >
+                          <BookOpen size={14} />
+                          <span>{c.name}</span>
+                        </button>
+                      </li>
+                    ))}
+                  {tests.data
+                    ?.filter((t) =>
+                      t.title.toLowerCase().includes(term.toLowerCase()),
+                    )
+                    .map((t) => (
+                      <li key={"s" + t.id}>
+                        <button
+                          className="hierarchy-search-result"
+                          onClick={() => choose(t.category, t.id)}
+                        >
+                          <FileText size={14} />
+                          <span>
+                            {t.title}
+                            <small>{t.category_name}</small>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                </>
+              ) : (
+                branch(null)
+              )}
+            </ul>
+          )}
+          {tests.isPending && (
+            <span className="hierarchy-loading">Loading tests…</span>
+          )}
+          {tests.error && <ErrorState error={tests.error} />}{" "}
+          {error != null && <ErrorState error={error} />}
+        </nav>
+        <div className="studio-tree-bottom">Book → Volume → Test → Parts</div>
+      </div>
     </aside>
   );
 }

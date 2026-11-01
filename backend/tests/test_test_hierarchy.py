@@ -25,6 +25,31 @@ from tests.test_exams import original_pdf
 pytestmark = pytest.mark.django_db
 
 
+def test_hierarchy_serialization_uses_prefetched_parts(book, django_assert_num_queries):
+    from rest_framework.test import APIRequestFactory, force_authenticate
+    from rest_framework.request import Request
+    from learning.tests_api import ListeningTestSerializer, ListeningTestViewSet
+
+    teacher, _, test = book
+    for number in range(1, 5):
+        add_part(book, number)
+    # Also cover the Full summary without an extra count query.
+    test.full_material = test.parts.first().material
+    test.save(update_fields=["full_material"])
+    raw = APIRequestFactory().get("/api/v1/listening-tests/?owned=true")
+    force_authenticate(raw, user=teacher)
+    request = Request(raw)
+    view = ListeningTestViewSet()
+    view.request = request
+    with django_assert_num_queries(2):
+        rows = list(view.get_queryset())
+    with django_assert_num_queries(0):
+        data = ListeningTestSerializer(rows, many=True, context={"request": request}).data
+    assert len(data[0]["parts"]) == 4
+    assert [part["question_count"] for part in data[0]["parts"]] == [1] * 4
+    assert data[0]["full"]["question_count"] == 1
+
+
 @pytest.fixture
 def book(settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path

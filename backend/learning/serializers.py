@@ -1,4 +1,4 @@
-from django.db.models import Count
+from django.db.models import Count, Q
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -29,7 +29,7 @@ class CategorySerializer(serializers.ModelSerializer):
     def get_material_count(self, obj) -> int:
         q = obj.materials.all()
         if not self.context["request"].user.can_edit:
-            q = q.filter(published_version__isnull=False)
+            q = q.filter(Q(published_version__isnull=False) | Q(published_questions__isnull=False))
         return q.count()
 
     def validate_parent(self, value):
@@ -81,6 +81,7 @@ class MaterialSerializer(serializers.ModelSerializer):
     transcript_origin = serializers.SerializerMethodField()
     transcript_warnings = serializers.SerializerMethodField()
     mock_available = serializers.SerializerMethodField()
+    practice_available = serializers.SerializerMethodField()
     question_count = serializers.SerializerMethodField()
     part_question_counts = serializers.SerializerMethodField()
     transcript_audio_id = serializers.SerializerMethodField()
@@ -107,6 +108,7 @@ class MaterialSerializer(serializers.ModelSerializer):
             "transcript_origin",
             "transcript_warnings",
             "mock_available",
+            "practice_available",
             "question_count",
             "part_question_counts",
             "transcript_audio_id",
@@ -126,7 +128,10 @@ class MaterialSerializer(serializers.ModelSerializer):
         return obj.published_version
 
     def get_status(self, obj) -> str:
-        return "published" if obj.published_version_id else "draft"
+        return "published" if obj.published_version_id or obj.published_questions_id else "draft"
+
+    def get_practice_available(self, obj) -> bool:
+        return bool(obj.published_version_id)
 
     @extend_schema_field(AudioSerializer(allow_null=True))
     def get_audio(self, obj):
@@ -140,6 +145,8 @@ class MaterialSerializer(serializers.ModelSerializer):
         asset = (
             version.audio
             if version
+            else obj.published_questions.audio
+            if obj.published_questions_id and obj.published_questions.audio_id
             else obj.audio_assets.order_by("-id").first()
             if self.context["request"].user.can_edit
             else None

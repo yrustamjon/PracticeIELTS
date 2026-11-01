@@ -1,0 +1,16 @@
+.learner-dashboard { max-width: 1240px; margin: 0 auto; }
+.learner-dashboard .continue-card { background: #fff; padding: 24px; }
+.learner-dashboard .continue-body { min-height: 190px; }
+.learner-dashboard .continue-details { padding-right: 0; }
+.learner-dashboard .continue-details > p { max-width: 490px; font-size: 14px; line-height: 1.7; margin: 12px 0 22px; }
+.learner-dashboard .practice-card.teal { background: #fff; border-color: #dfe8ed; border-radius: 12px; padding: 24px 20px; }
+.learner-dashboard .practice-card h3 { color: #14283d; }
+.learner-dashboard .practice-card p { color: #64748b; line-height: 1.7; }
+.learner-dashboard .practice-icon { background: #edf7f8; color: #147d92; }
+.learner-dashboard .practice-card .text-link { color: #147d92; }
+@media (max-width: 760px) {
+  .learner-dashboard .continue-card { padding: 20px; }
+  .learner-dashboard .continue-body { min-height: auto; }
+  .learner-dashboard .continue-actions { flex-wrap: wrap; }
+  .learner-dashboard .practice-card.teal { padding: 20px; }
+}

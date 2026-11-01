@@ -464,7 +464,7 @@
 .studio-tree-scroll {
   max-height: 440px;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: auto;
   padding: 0 9px 15px;
 }
 .studio-tree-item > button,
@@ -756,7 +756,7 @@
 .stepped-editor #material-review .segment-editor-list {
   max-height: 430px;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: auto;
   padding-right: 8px;
 }
 .stepped-editor .form-panel {
@@ -871,7 +871,7 @@
 .practice-exercise-list {
   min-height: 0;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: auto;
   flex: 1;
   padding: 0 9px 10px;
 }
@@ -1677,7 +1677,7 @@
 .catalog-resume-list {
   max-height: 155px;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: auto;
 }
 .catalog-resume-list .exam-history-row {
   padding: 13px 0;

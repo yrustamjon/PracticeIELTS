@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.core import signing
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -18,6 +19,7 @@ from rest_framework.views import APIView
 
 from learning.models import Material
 
+from .audio_auth import COOKIE, SALT, ExamAudioAuthentication
 from .models import MockAttempt, QuestionDocument
 from .pdf_layout import isolated_pdf_page
 from .services import (
@@ -86,6 +88,27 @@ class MockAttemptViewSet(viewsets.ViewSet):
             }
         )
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["get"])
+    def history(self, request):
+        from rest_framework.pagination import PageNumberPagination
+
+        attempts = MockAttempt.objects.filter(
+            user=request.user, submitted_at__isnull=False
+        ).select_related("material__category").order_by("-submitted_at", "-id")
+        if not request.user.can_edit:
+            attempts = attempts.exclude(material_id__in=active_material_ids(request.user))
+        paginator = PageNumberPagination()
+        paginator.page_size = 10
+        page = paginator.paginate_queryset(attempts, request, view=self)
+        return paginator.get_paginated_response([
+            {"id": a.pk, "title": a.material.title,
+             "category_name": a.material.category.name,
+             "timing": a.timing, "submitted_at": a.submitted_at,
+             "score": a.score, "total": a.total}
+            for a in page
+        ])
+
     def create(self, request):
         serializer = StartAttempt(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -93,7 +116,6 @@ class MockAttemptViewSet(viewsets.ViewSet):
         material = get_object_or_404(
             Material,
             pk=data["material"],
-            published_version__isnull=False,
             published_questions__isnull=False,
         )
         previous = MockAttempt.objects.filter(
@@ -135,7 +157,9 @@ class MockAttemptViewSet(viewsets.ViewSet):
             attempt = MockAttempt.objects.create(
                 user=request.user,
                 material=material,
-                version=material.published_version,
+                version=material.published_version
+                if qs.audio_id and material.published_version_id
+                and material.published_version.audio_id == qs.audio_id else None,
                 question_set=qs,
                 timing=data["timing"],
                 deadline=timezone.now() + timedelta(seconds=qs.duration_seconds)
@@ -146,6 +170,28 @@ class MockAttemptViewSet(viewsets.ViewSet):
 
     def retrieve(self, request, pk=None):
         return Response(attempt_data(self.own(request, pk)))
+
+    @action(detail=True, methods=["get", "post", "delete"])
+    def share(self, request, pk=None):
+        from .models import SharedMockResult
+        from .sharing import private_response, result_snapshot
+
+        with transaction.atomic():
+            attempt = get_object_or_404(
+                MockAttempt.objects.select_for_update(), pk=pk, user=request.user
+            )
+            guard_study(request.user, attempt.material_id)
+            if request.method == "DELETE":
+                SharedMockResult.objects.filter(attempt=attempt).delete()
+                return private_response(None, status=204)
+            if not attempt.submitted_at:
+                raise ValidationError({"detail": "Submit the Mock before sharing results."})
+            shared = SharedMockResult.objects.filter(attempt=attempt).first()
+            if request.method == "POST" and shared is None:
+                shared = SharedMockResult.objects.create(
+                    attempt=attempt, snapshot=result_snapshot(attempt)
+                )
+            return private_response({"token": str(shared.token) if shared else None})
 
     def partial_update(self, request, pk=None):
         serializer = SaveAttempt(data=request.data)
@@ -198,22 +244,33 @@ class MockAttemptViewSet(viewsets.ViewSet):
     def start_audio(self, request, pk=None):
         attempt = self.own(request, pk)
         ticket = issue_audio_ticket(attempt)
-        return Response(
+        response = Response(
             {
                 "url": f"/api/v1/mock-attempts/{attempt.pk}/audio/",
                 "ticket": ticket,
-                "ticket_expires_seconds": 120,
+                "duration_ms": attempt.question_set.audio.duration_ms,
+                "ticket_expires_seconds": 86400 if attempt.timing == "untimed" else 120,
             }
         )
+
+        response.set_cookie(
+            COOKIE,
+            signing.dumps({"user": request.user.pk, "session": request.user.get_session_auth_hash(),
+                           "attempt": attempt.pk, "ticket": ticket}, salt=SALT),
+            max_age=86400 if attempt.timing == "untimed" else 120, httponly=True, secure=request.is_secure(), samesite="Strict",
+            path=f"/api/v1/mock-attempts/{attempt.pk}/audio/",
+        )
+        response["Cache-Control"] = "private, no-store"
+        return response
 
     @extend_schema(
         responses={(200, "audio/mpeg"): OpenApiTypes.BINARY},
         parameters=[OpenApiParameter("X-Exam-Audio", str, OpenApiParameter.HEADER)],
     )
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["get"], authentication_classes=[ExamAudioAuthentication])
     def audio(self, request, pk=None):
         attempt = self.own(request, pk)
-        return exam_audio_response(attempt, request.headers.get("X-Exam-Audio", ""))
+        return exam_audio_response(attempt, request.headers.get("X-Exam-Audio", "") or (request.auth if isinstance(request.auth, str) else ""), request.headers.get("Range"))
 
 
 class TeacherDocumentPage(APIView):
@@ -263,7 +320,7 @@ class TeacherPdfPage(TeacherDocumentPage):
             or document.material.owner_id == request.user.pk
         ):
             raise PermissionDenied("Only authorized editors can preview this document.")
-        return isolated_pdf_page(document, page)
+        return isolated_pdf_page(document, page, request)
 
 
 class AttemptPdfPage(APIView):
@@ -285,4 +342,4 @@ class AttemptPdfPage(APIView):
             raise PermissionDenied(
                 "This question page is not available to this attempt."
             )
-        return isolated_pdf_page(qs.document, page)
+        return isolated_pdf_page(qs.document, page, request)

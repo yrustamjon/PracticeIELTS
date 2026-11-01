@@ -1,0 +1,13 @@
+[Unit]
+Description=PracticeIELTS Celery worker
+After=network.target redis-server.service
+Requires=redis-server.service
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/home/PracticeIELTS/backend
+ExecStart=/home/PracticeIELTS/backend/.venv/bin/celery -A config worker --loglevel=info --concurrency=1
+Restart=on-failure
+UMask=0077
+[Install]
+WantedBy=multi-user.target

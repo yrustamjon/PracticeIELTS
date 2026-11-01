@@ -1,3 +1,4 @@
+import { ReviewFeedback } from "./ReviewFeedback";
 import { Flag } from "lucide-react";
 import type { ExamQuestion } from "../services/api";
 
@@ -191,6 +192,7 @@ export function QuestionControl({
         ) : (
           !placed && <div className="standalone-answer">{input()}</div>
         )}
+        <ReviewFeedback number={q.number} />
       </div>
     </article>
   );

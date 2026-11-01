@@ -160,6 +160,8 @@ def test_register_cannot_elevate(client):
 
 
 def test_hierarchy_and_safe_delete(client, users):
+    users[0].is_superuser = True
+    users[0].save(update_fields=["is_superuser"])
     client.force_authenticate(users[0])
     a = client.post("/api/v1/categories/", {"name": "Source"}, format="json").data
     b = client.post(
@@ -192,6 +194,7 @@ def test_draft_visibility_and_editor_ownership(client, users, material):
     assert client.get("/api/v1/materials/").data["count"] == 0
     assert client.get(f"/api/v1/materials/{m['id']}/").status_code == 404
     assert client.get(f"/api/v1/audio/{asset.pk}/stream/").status_code == 403
+    assert client.post(f"/api/v1/audio/{asset.pk}/playback/").status_code == 403
     client.force_authenticate(users[3])
     assert client.patch(
         f"/api/v1/materials/{m['id']}/", {"title": "Stolen"}, format="json"
@@ -211,12 +214,23 @@ def test_publication_gates_and_audio(client, users, material):
     published = publish(client, m)
     client.force_authenticate(users[1])
     url = published["audio"]["stream_url"]
+    full = client.get(url)
+    assert full.status_code == 200
+    original = b"".join(full.streaming_content)
+    etag = full["ETag"]
+    assert "private, no-cache" in full["Cache-Control"]
+    cached = client.get(url, HTTP_IF_NONE_MATCH=etag)
+    assert cached.status_code == 304 and cached.content == b""
+    assert client.get(url, HTTP_IF_NONE_MATCH='W/' + etag).status_code == 304
+    changed = client.get(url, HTTP_IF_NONE_MATCH='"old-revision"')
+    assert changed.status_code == 200
+    assert b"".join(changed.streaming_content) == original
     r = client.get(url, HTTP_RANGE="bytes=0-99")
     assert r.status_code == 206 and len(b"".join(r.streaming_content)) == 100
     assert r["Content-Range"].startswith("bytes 0-99/")
     assert client.get(url, HTTP_RANGE="bytes=9999999-").status_code == 416
     client.force_authenticate(None)
-    assert client.get(url).status_code == 401
+    assert client.get(url, HTTP_IF_NONE_MATCH=etag).status_code == 401
 
 
 def test_invalid_upload_and_timestamps(client, users, material):
@@ -290,6 +304,8 @@ def test_full_practice_resume_and_version_pinning(client, users, material):
         client.post(path + "check/", {"answer": "x"}, format="json").status_code == 404
     )
     client.force_authenticate(users[0])
+    users[0].is_superuser = True
+    users[0].save(update_fields=["is_superuser"])
     changed = client.put(
         f"/api/v1/materials/{m['id']}/transcript/",
         {"segments": [{"text": "A revised reference.", "start_ms": 0, "end_ms": 4000}]},
@@ -378,3 +394,106 @@ def test_whitespace_normalization():
 def test_long_full_answer_is_bounded_before_allocating_alignment_matrix():
     with pytest.raises(ValueError, match="too long"):
         compare("word " * 1500, "word " * 1500)
+
+
+def test_native_study_audio_cookie_is_scoped_revocable_and_range_capable(client, users, material):
+    from rest_framework.test import APIClient
+    from unittest.mock import patch
+    import time
+    published = publish(client, material)
+    asset = Material.objects.get(pk=material['id']).audio_assets.first()
+    client.force_authenticate(users[1])
+    grant = client.post(f'/api/v1/audio/{asset.pk}/playback/', {}, format='json')
+    assert grant.status_code == 200
+    cookie = grant.cookies['study_audio']
+    assert cookie['httponly'] and cookie['samesite'] == 'Strict'
+    assert cookie['path'] == '/api/v1/audio/' and cookie['max-age'] == 600
+    browser = APIClient()
+    browser.cookies['study_audio'] = cookie.value
+    url = published['audio']['stream_url']
+    response = browser.get(url, HTTP_RANGE='bytes=0-99')
+    assert response.status_code == 206 and len(b''.join(response.streaming_content)) == 100
+    assert browser.get('/api/v1/auth/me/').status_code == 401
+    assert browser.post(f'/api/v1/audio/{asset.pk}/playback/').status_code == 401
+    with patch('django.core.signing.time.time', return_value=time.time()+601):
+        assert browser.get(url).status_code == 401
+    users[1].set_password('A-different-password-903!')
+    users[1].save()
+    assert browser.get(url, HTTP_IF_NONE_MATCH=response['ETag']).status_code == 401
+    # Logout actively removes the media cookie from the current browser.
+    csrf = browser.get('/api/v1/auth/csrf/').data['csrfToken']
+    result = browser.post('/api/v1/auth/logout/', HTTP_X_CSRFTOKEN=csrf)
+    assert result.status_code == 204 and result.cookies['study_audio']['max-age'] == 0
+
+
+@pytest.mark.parametrize('difficulty', ['easy', 'medium', 'hard', 'full'])
+@pytest.mark.parametrize('scope', ['part', 'full'])
+def test_practice_public_share_modes(client, users, material, difficulty, scope):
+    import uuid
+    from learning.models import SharedPracticeResult
+
+    from learning.models import ListeningTest, TestPart
+    m = Material.objects.get(pk=material['id'])
+    test = ListeningTest.objects.create(title='Original test', category=m.category, owner=users[0])
+    if scope == 'part':
+        TestPart.objects.create(test=test, number=1, material=m)
+    else:
+        test.full_material = m
+        test.save()
+    publish(client, material)
+    client.force_authenticate(users[1])
+    session = client.post('/api/v1/sessions/', {'material': material['id'], 'difficulty': difficulty}, format='json').data
+    path = f"/api/v1/sessions/{session['id']}/"
+    share = path + 'share/'
+    token = client.post(share).data['token']
+    initial = APIClient().get(f'/api/v1/shared-practice-results/{token}/').data
+    assert initial['status'] == 'in_progress'
+    assert initial['checked_count'] == 0 and initial['results'] == []
+    assert initial['accuracy'] is None and initial['completed_at'] is None
+    for i in range(len(session['groups'])):
+        result = client.post(path + 'check/', {'position': i, 'answer': f'Checked answer {i}'}, format='json')
+        assert result.status_code == 200, result.data
+        live = APIClient().get(f'/api/v1/shared-practice-results/{token}/').data
+        assert live['checked_count'] == i + 1
+        assert len(live['results']) == i + 1
+        assert live['status'] == ('completed' if i + 1 == len(session['groups']) else 'in_progress')
+    token = client.post(share).data['token']
+    assert client.post(share).data['token'] == token
+    client.force_authenticate(users[2])
+    for method in [client.get, client.post, client.delete]:
+        assert method(share).status_code == 404
+    public = APIClient()
+    url = f'/api/v1/shared-practice-results/{token}/'
+    response = public.get(url)
+    assert response.status_code == 200
+    data = response.data
+    assert data['part_label'] == ('Part 1' if scope == 'part' else 'Full test')
+    assert data['test_title'] == 'Original test'
+    assert data['status'] == 'completed' and data['completed_at']
+    assert data['checked_count'] == len(session['groups'])
+    assert data['difficulty'] == difficulty
+    assert data['exercise_count'] == len(session['groups'])
+    assert data['results'][0]['answer'] == 'Checked answer 0'
+    assert not {'user', 'email', 'audio', 'session', 'material'} & data.keys()
+    assert response['Cache-Control'] == 'no-store'
+    assert public.post(url).status_code == 405
+    assert public.get(f'/api/v1/shared-practice-results/{uuid.uuid4()}/').status_code == 404
+    client.force_authenticate(users[1])
+    client.post(path + 'check/', {'position': 0, 'answer': 'Changed later'}, format='json')
+    changed = public.get(url).data['results'][0]
+    assert changed['answer'] == 'Changed later'
+    assert changed['attempt_count'] == 2
+    assert [row['number'] for row in changed['attempts']] == [1, 2]
+    assert changed['attempts'][0]['accuracy'] == changed['first_accuracy']
+    assert changed['attempts'][1]['accuracy'] == changed['accuracy']
+    assert all(token['status'] != 'correct' for row in changed['attempts'] for token in row['mistakes'])
+    assert any(row['mistakes'] for row in changed['attempts'])
+    assert changed['first_accuracy'] == data['results'][0]['accuracy']
+    assert data['results'][0]['attempt_count'] == 1
+    assert client.get(share).data['token'] == token
+    assert SharedPracticeResult.objects.get(token=token).snapshot == {}
+    assert client.delete(share).status_code == 204
+    assert public.get(url).status_code == 404
+    new_token = client.post(share).data['token']
+    assert new_token != token
+    assert public.get(f'/api/v1/shared-practice-results/{new_token}/').data['results'][0]['answer'] == 'Changed later'

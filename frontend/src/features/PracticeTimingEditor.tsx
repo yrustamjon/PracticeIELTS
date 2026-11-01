@@ -13,6 +13,7 @@ function milliseconds(value: string): number | undefined {
 
 export function PracticeTimingEditor({
   interval,
+  difficulty,
   duration,
   previousEnd,
   nextStart,
@@ -21,6 +22,7 @@ export function PracticeTimingEditor({
   onSave,
 }: {
   interval: PlaybackTiming;
+  difficulty: string;
   duration: number;
   previousEnd?: number;
   nextStart?: number;
@@ -107,7 +109,7 @@ export function PracticeTimingEditor({
         >
           <p>
             Adjust this exercise in the original audio. Saved timing applies to
-            new Easy attempts.
+            new {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} attempts.
           </p>
           <div className="practice-timing-fields">
             {(["start", "end"] as const).map((field) => (

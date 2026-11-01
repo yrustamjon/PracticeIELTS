@@ -85,3 +85,131 @@ GET/POST sessions responses also include timing_revision (integer or null) and c
 PATCH sessions/<id>/timing/ {position,start_ms,end_ms,revision} → updated session. All non-null values are strict integers; revision is the current timing_revision, including explicit null for original timing. Reject nonpositive/out-of-audio intervals and overlap with adjacent exercises. The endpoint creates an immutable timing snapshot and advances only the editing admin's session, retaining drafts, checked responses and position. Future Easy starts use the newest snapshot; existing other sessions stay pinned. Other difficulties and published/unpublished transcript content are untouched. A no-op save returns the current session without a new revision.
 
 Errors: 401 unauthenticated; 403 non-admin; 404 another user's session; 400 unsupported difficulty or invalid input/interval; 409 stale timing or a newer transcript publication (reopen the latest Easy Practice from its material). No neighboring interval is silently trimmed. Preview may include adjacent audio, but persisted windows cannot overlap.
+
+## Super administrator and profile settings
+
+Django `is_superuser` is the super administrator authority; public registration remains student-only. Auth responses add read-only `is_superuser` and `can_delete`. Ordinary delegated admins have `role=admin`, `is_staff=false`, `is_superuser=false`: they can author content but cannot access account administration, the audit API or DELETE actions. Only a superuser may remove saved transcript rows or reduce a saved question set for the same audio. Corrections still create new immutable versions. Existing material/test deletion endpoints remain unavailable; category deletion keeps protected-child/content checks.
+
+- `POST auth/password/ {current_password,new_password}` verifies the current password and Django password rules, returns a fresh `{access,user}` and refresh cookie, and revokes earlier access/refresh tokens. Available to all authenticated users; password input is never logged. Clients must replace their in-memory access token.
+- `GET admin/accounts/?page=&page_size=&search=` lists administrator/staff/superuser accounts, superuser only. `POST admin/accounts/ {username,email?,password}` creates an ordinary admin; privilege flags and other fields are rejected. No password/hash is returned.
+- `GET admin/activity/?page=&page_size=&actor=&action=&search=` returns newest-first persisted audit events, superuser only. Fields: `id,actor,username,action,material,material_title,details,created_at`. Bounded pagination; no audit mutation endpoint. Generic successful editor API mutations record method/path/status without request bodies or query strings, alongside existing domain audit events. Successful editor sign-ins, administrator creation and password changes have explicit events. Older events retain their original information.
+
+When rolling out the password-revocation setting, existing JWTs without the password fingerprint require a fresh sign-in. Apply learning migration `0007_auditlog_details` before restarting backend/worker processes. Never apply a live migration or deploy this change without rollout authorization.
+
+### Private media conditional caching
+Study `GET audio/<id>/stream/` and approved `GET .../pdf-pages/<page>/` responses expose ETag and `Cache-Control: private, no-cache, must-revalidate`, varying on Authorization/Cookie. Clients may retain bytes but must validate with the server before reuse. Matching If-None-Match returns 304 only after current authorization, approved-page and applicable active-exam checks. New file metadata changes the validator. Exam ticket audio retains private/no-store and single-delivery rules. No public/shared media caching is enabled.
+
+### Progressive study audio
+POST audio/<id>/playback/ (Bearer JWT required) validates current study access and returns {url,expires_in:600}; sets a signed HttpOnly SameSite=Strict study_audio cookie scoped to /api/v1/audio/. Native audio may GET the existing stream URL with this cookie and Range headers. This cookie authenticates only study audio GETs, not general APIs or exam ticket audio. Every request still checks publication/editor access and active timed-exam restrictions before caching or streaming. Password changes and inactive users invalidate grants; logout and identity changes clear the browser cookie. Frontend renews active grants before expiration and provides retry. Original Bearer stream requests remain supported. Native buffering can start playback before the complete file is downloaded; exam audio retains its existing ticket/no-store/single-delivery contract.
+
+
+## Progressive Mock audio (MOCK-STREAM-01)
+POST /api/v1/mock-attempts/<id>/start-audio/ retains Bearer/owner authorization and returns url, ticket, duration_ms and ticket_expires_seconds. It additionally sets an HttpOnly SameSite=Strict signed exam_audio cookie scoped to that attempt's audio URL. Native GET audio accepts that cookie only on the audio action; other APIs require normal authentication. Cookie validates active user, attempt ID and current password session hash. Existing Bearer + X-Exam-Audio callers remain supported. Timed tickets expire in 120 seconds and retain atomic single delivery, no Range/restart; an already open response streams incrementally. Untimed grants expire in 24 hours, permit repeated delivery and single byte ranges (206/416), and are invalidated by a new grant. Every request enforces ownership, submission/deadline and applicable study guards. Responses remain private/no-store and disable nginx response buffering. No ticket appears in URLs.
+
+## Mock result sharing
+The browser shares a text summary from the existing owner-authorized submitted `mock-attempts/<id>/` response: material title, timing mode, raw score and percentage. No new API, public result URL, answer keys, media or account information is shared. Native sharing falls back to automatic clipboard copying, including a legacy browser copy fallback; concise status replaces manual-copy fields.
+
+## Public detailed Mock results
+GET/POST/DELETE mock-attempts/<id>/share/ (owner only): get current {token|null}, create/reuse snapshot {token}, revoke link (204). Only submitted attempts may be shared. GET shared-results/<uuid>/ is anonymous read-only and returns the explicit saved summary, category path, test/Part labels, timing, submission date and per-question prompt/options/student answer/accepted answers/correctness. No user identifiers, private media or document endpoints. Missing/revoked tokens return 404; responses are no-store/noindex.
+
+GET mock-attempts/history/?page=1 → paginated owner-only submitted attempt summaries {id,title,category_name,timing,submitted_at,score,total}. Ten per page, newest submission first; timed-study restrictions filter blocked materials exactly as existing attempt listing. No answers/keys/media in summaries.
+
+## Administrator user directory
+GET admin/users/?search=&role=student|teacher|admin&page=1 returns 20-per-page safe user fields (id,username,email,role,is_active,is_superuser,date_joined), practice_sessions,checked_answers,completed_mocks,mock_score_percent,last_learning_at. GET admin/users/overview/ returns total_users,students,active_accounts,learning_users_7d,completed_mocks,checked_answers,mock_score_percent. Learning activity derives from session/response/attempt timestamps; mock percentage is weighted stored score/total for submitted scored attempts. Active admins/superusers only; read-only, no passwords/tokens/answers. auth user includes can_view_users capability; server permission remains authoritative.
+
+Practice timing extension: sessions/<id>/timing/ PATCH supports Easy, Medium and Hard administrator sessions. Timing revision selection is scoped by transcript version, grouping version and difficulty; full remains read-only. Existing Easy revisions retain their scope. Published content and historical session playback are preserved.
+
+GET/POST/DELETE sessions/<id>/share/: owner-only share status/create/revoke. POST requires every exercise checked; snapshots only latest checked responses for this pinned session. GET shared-practice-results/<uuid>/ is anonymous read-only and shows category/book/test/Part, difficulty, average exercise accuracy and per-exercise checked answer/reference/comparison. No private IDs/account information/media or other difficulties/Parts. Unknown/revoked token 404; no-store/noindex.
+
+Practice sharing supports every difficulty (easy/medium/hard/full) on Part, Full test and standalone materials. Each session has its own token/snapshot. Repeated POST reuses the saved snapshot; revoke and recreate to capture later checked answers. Submitted Mock sharing remains independent per Part/Full attempt.
+
+
+## Live practice sharing (supersedes frozen practice snapshot semantics)
+GET/POST/DELETE sessions/<id>/share/ remain owner-only. POST is allowed before any checked answer and returns/reuses the same session token. GET shared-practice-results/<uuid>/ now derives the latest checked responses for that pinned session on every request, including existing links. Fields add checked_count, status (in_progress|completed); exercise_count is total exercises, accuracy is null until the first check, completed_at is null until all exercises have checked responses. Unchecked drafts/reference text are omitted. Checked corrections remain visible. Public page polls every 15 seconds while visible, supports manual refresh, and stops polling on errors. Revocation remains immediate; public data remains no-store/noindex. Mock result snapshots are unchanged.
+
+### Shared practice retry history
+Public practice result rows additionally expose `attempt_count` (persisted Check Answer submissions, not audio replays), `first_accuracy` and chronological `attempts`: `{number, accuracy, mistakes: [{status, expected, actual}]}`. Mistakes project only incorrect/missing/extra comparison tokens; correct tokens and private identifiers are excluded from history. Latest answer/comparison and overall latest-answer accuracy remain unchanged. Public UI renders ten checked exercises per page using `?page=`, preserves the page during polling, and clamps invalid/out-of-range pages. Pagination is client-side; the API still returns all checked rows. History is collapsible beneath each answer.
+
+Public practice presentation now displays mistake history directly per attempt and omits the full latest answer/reference/token list. API projection remains unchanged.
+
+## Question-only Mocks (MOCK-CONTENT-21)
+`QuestionSet.audio` and `MockAttempt.version` may be null. Saving reviewed questions no longer requires a recording. Editor-only `POST /api/v1/materials/{id}/publish-questions/` requires `confirm_review: true`, source/license/permission metadata and a valid saved question set. It publishes questions independently, preserving existing transcript publications. Learner material/test visibility includes published question-only papers; `practice_available` is false without a published transcript. Test summaries and attempts expose `audio_available`; false means no start-audio action is available. Existing attempts remain pinned to their question set and optional transcript version; adding audio does not retroactively enable it on a question-only attempt. Keys remain hidden until submission and PDF access remains attempt-scoped to approved pages.
+
+## Reading passage increment (READING-10-01)
+Separate /api/v1/reading-papers/ and /reading-attempts/ APIs preserve Listening behavior. ReadingPaper is an owner-bound book/test/passage identity; append-only ReadingVersion contains structured paragraphs, question groups/table cells, private keys and source-PDF/page references. A published pointer changes only after explicit comparison/review confirmation. Attempts pin a published version.
+GET reading-papers/ lists published summaries (editors may request owned=true drafts); POST creates an editor-owned draft with source PDF. GET reading-papers/{id}/ returns published content (owned editor receives latest draft and private review metadata). POST {id}/versions/ saves a new draft; POST {id}/publish/ {version,confirm_review:true} publishes only a reviewed version with source/license/rights confirmation. GET {id}/source-pages/{page}/?version=id is editor-only, returning a source page image. No source files/keys go to learners.
+POST reading-attempts/ {paper} creates/resumes one active owned attempt; GET/PATCH {id}/ loads/saves validated partial answers; POST {id}/submit/ atomically scores saved answers and reveals accepted answers. Submitted attempts cannot change; later publication does not change pinned attempts. This increment is untimed passage practice, not a full timed Reading examination.
+
+## Reading administrator hierarchy summaries (2026-10-28)
+
+`GET /api/v1/reading-imports/` retains editor/owner authorization and adds `locations`: `{candidate_index, book, test, passage, title}` for saved candidates. This summary excludes passage bodies, answer keys and source paths; existing `published_papers` distinguishes saved drafts from publications. Clients follow pagination before deriving book/test choices.
+
+`POST /api/v1/reading-imports/{id}/approve/` rejects an identity `(owner, book, test, passage)` that already exists with HTTP 400. Repeating approval of the same candidate remains idempotent. Explicit revisions use the existing paper version/review endpoints, preserving historical version pins.
+
+
+### Reading headings and matching (2026-10-28)
+
+Reading question groups additionally accept `kind: "headings" | "matching"`.
+`options` contains unique source answer codes (for example `i`, `iv`, or `A`),
+and optional `option_labels` maps those codes to full source text. Headings
+require a complete label for every code; unknown labels, duplicate options and
+keys outside the supplied codes are rejected. Learners see the labels but save
+codes. Matching may use bare paragraph letters or labelled features. The same
+publication review, private-key, attempt ownership and immutable-version rules
+apply. Existing `choice` payloads without labels remain compatible.
+
+### Full Reading attempts
+
+`POST /api/v1/reading-full-attempts/ {paper, timed:true|false}` uses a published
+passage ID to identify its owner/book/test. All three passages must be published
+and their question numbers must cover exactly 1–40 in passage order. Returns
+201 for a new attempt or 200 for an existing active attempt of the same mode.
+Each attempt pins all three versions; later publication cannot alter it.
+`GET/PATCH {id}/`, `POST {id}/submit/` use existing answer/result contracts,
+with `passages:[{passage,version}]`, `timed`, `deadline`, and `server_time`.
+Timed attempts expire after 60 minutes. Retrieval, save and submission finalize
+expired attempts using only previously persisted answers; late writes are
+rejected. Before final submission, source metadata, keys and results are private.
+Active timed Full attempts block sibling passage/untimed result access.
+
+Timed Full study guards also apply to generic Reading paper detail and editor-only
+source-page review. An editor taking a timed Full cannot use those review routes
+to inspect the keys. Earlier submitted passage and Full results from the same
+owner/book/test remain blocked until the active timed Full is submitted or expires.
+
+### Reading unordered multiple answers
+
+`kind: "multiple_choice"` represents source instructions to choose multiple
+letters in any order. `text` preserves the shared source prompt; `questions`
+contains2–10 consecutive numbered answer slots; `options` and complete
+`option_labels` preserve every source choice. Each slot's private key list must
+contain the same distinct accepted codes, exactly one per required answer.
+Save one code per slot using the existing answers map. Final passage/Full scoring
+accepts either order and awards each correct code at most once within its group;
+repeating a correct code cannot earn duplicate credit. Submitted historical
+results are not recalculated. Table groups may retain blank headers/cells and
+use `text` for the original caption.
+
+## Reading source figures (local increment; not deployed)
+Reading content may include up to10 reviewed `figures`: `{page, crop:[x,y,width,height], alt, after_paragraph}`. Crop coordinates are normalized from the top-left of the original PDF page. Positive finite dimensions must fit within the page; figure pages must be approved passage pages and cannot be private key pages. Position0 precedes the first paragraph; positionN follows paragraphN. Alternate text is required. Figures remain within immutable content versions.
+Authenticated PNG routes: `GET /api/v1/reading-attempts/{id}/figures/{index}/`; `GET /api/v1/reading-full-attempts/{id}/figures/{passage}/{index}/` (passage1–3, index0-based); editor-only `GET /api/v1/reading-papers/{id}/figures/{index}/?version={version}`. Learner routes use only the owned attempt’s pinned versions, never a caller-selected page/crop or current publication. Full timed restrictions also block other attempts’ figures; the active attempt can access its own figures. Editor figure review follows timed study guards. Responses contain only the approved crop and use private,no-store. Invalid figures/pages/ownership fail with normal API errors. No source PDF/key URL is exposed.
+
+Question groups may provide `figure_indices` referencing the version’s `content.figures` list. Each reference must exist and may occur in only one group. Referenced diagrams render within that group instead of duplicating them in the article; figure route authorization and version pins remain identical. Groups without references retain their prior presentation.
+
+### Reading learner selection and history (2026-10-29)
+GET reading-full-attempts/ returns paginated owned metadata only: id,paper,book,test,passage=0,title,timed,score,total,submitted_at,created_at. Elapsed timed attempts finalize before listing. An active timed exam hides sibling practice/completed history for that owner/book/test; no passage content, answers, keys or source links are returned. GET reading-attempts/ additionally includes book,test,passage,timed=false,total,created_at for owned, study-permitted passage history. Existing POST start/resume and immutable submission contracts are retained. Individual passage practice remains untimed; Full mocks support timed60minutes/untimed.
+
+### Reading result sharing (2026-10-29)
+GET/POST/DELETE reading-attempts/<id>/share/ and reading-full-attempts/<id>/share/ are owned and respect timed study guards. Submitted-only GET returns {token:null|string}; POST idempotently creates a random UUID-backed immutable result snapshot; DELETE revokes. GET shared-reading-results/<uuid:token>/ is anonymous read-only, no-store/noindex/no-referrer,404 when revoked/unknown. Snapshot contains book/test/passage, title, mode, actualscore/total/date, numbered answers/mistakes/correct answers/options; excludes account identity, source PDF, full passage text and private version/source metadata. New share after revocation uses a new token.
+
+
+## Administrator profiles
+Super administrator only: GET/PATCH `/api/v1/admin/accounts/{id}/` targets only administrator accounts. PATCH accepts `new_password` and/or `is_active`, rejects other fields and changes to super administrators. Password validation uses existing Django policy. Resets revoke existing access tokens via CHECK_REVOKE_TOKEN and blacklist refresh tokens; blocking rejects authenticated access and blacklists refresh tokens. Passwords never appear in responses or audit details. GET `/api/v1/admin/activity/?account={id}` includes activity by that account plus events targeting its `details.user_id`, preserving actor/search/pagination filters. No schema migration.
+
+
+### Blocked login
+POST `/api/v1/auth/login/`: a matching inactive account with a valid password returns403 and `detail: "Your account has been blocked. Please contact the administrator."`. Invalid credentials remain401 with the existing generic detail. No access/refresh tokens or refresh cookie are issued to a blocked account. CSRF and login throttling apply before credential checks; reactivated accounts can sign in normally.
+
+
+### Submitted Mock review audio
+Owned submitted Mock responses include review_audio_url for the audio pinned by that attempt question set; active/no-audio attempts return null. Existing authenticated audio playback/stream permits an unpublished Full recording only when the requesting user owns a submitted attempt pinning it; active-exam study guards still apply. No anonymous/share audio access or change to exam one-play rules.

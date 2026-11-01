@@ -23,7 +23,7 @@ def inspect_audio(upload):
                     "-v",
                     "error",
                     "-show_entries",
-                    "format=duration:stream=codec_type",
+                    "format=duration:stream=codec_type:stream_disposition=attached_pic",
                     "-of",
                     "json",
                     tmp.name,
@@ -37,7 +37,11 @@ def inspect_audio(upload):
             if (
                 duration <= 0
                 or not any(s["codec_type"] == "audio" for s in metadata["streams"])
-                or any(s["codec_type"] == "video" for s in metadata["streams"])
+                or any(
+                    s["codec_type"] == "video"
+                    and s.get("disposition", {}).get("attached_pic") != 1
+                    for s in metadata["streams"]
+                )
             ):
                 raise ValueError()
         except (subprocess.SubprocessError, ValueError, KeyError):

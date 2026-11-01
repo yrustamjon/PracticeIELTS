@@ -1,4 +1,15 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { SharedReadingResult } from "../features/ReadingSharing";
+import { ReadingHistory } from "../features/ReadingSelection";
+import { ReadingImport, ReadingImportDetail } from "../features/ReadingImport";
+import {
+  ReadingLibrary,
+  ReadingAttemptPage,
+  ReadingReview,
+} from "../features/Reading";
+import { SharedPractice } from "../features/SharedPractice";
+import { AdminHome, AdminManagement } from "../features/AdminDashboard";
+import { AdminUsers } from "../features/AdminUsers";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Link,
   NavLink,
@@ -13,7 +24,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Headphones,
   Search,
-  Bell,
   ChevronDown,
   House,
   LibraryBig,
@@ -26,10 +36,15 @@ import {
   BookOpen,
   ArrowUpRight,
   AudioLines,
+  UserRound,
+  Users,
 } from "lucide-react";
+import { useWorkspace } from "../stores/workspace";
 import { useAuth } from "../stores/auth";
 import { api, post, restore, type User } from "../services/api";
 import { Loading, ErrorState } from "../components/ui";
+import { MockHistory } from "../features/MockHistory";
+import { SharedMock } from "../features/SharedMock";
 import { MockPage, MockResults } from "../features/Mock";
 import { FutureModule } from "../features/Learning";
 import { Dashboard } from "../features/Dashboard";
@@ -45,9 +60,9 @@ import {
   Profile,
 } from "../features/Learning";
 
-function Brand() {
+function Brand({ home = "/" }: { home?: string }) {
   return (
-    <Link to="/" className="brand" aria-label="PracticeIELTS home">
+    <Link to={home} className="brand" aria-label="PracticeIELTS home">
       <Headphones />
       <span>
         Practice<span>IELTS</span>
@@ -57,20 +72,62 @@ function Brand() {
 }
 const links = [
   ["/", "Dashboard", House],
-  ["/library", "Practice Library", LibraryBig],
-  ["/dictation", "Dictation", Headphones],
-  ["/mock-tests", "Mock Tests", FileText],
+  ["/library", "Library", LibraryBig],
+  ["/dictation", "Listening Practice", Headphones],
+  ["/mock-tests", "Listening Mocks", FileText],
+  ["/reading", "Reading", BookOpen],
   ["/mistakes", "Mistake Review", BookOpen],
   ["/progress", "Progress", ChartNoAxesCombined],
 ] as const;
+const learnerQuickLinks = [
+  ["/", "Home", House],
+  ["/library", "Library", LibraryBig],
+  ["/reading", "Reading", BookOpen],
+  ["/mock-tests", "Listen Mock", FileText],
+  ["/profile", "Profile", UserRound],
+] as const;
 function Shell() {
+  const { admin, profilePath } = useWorkspace();
   const [drawer, setDrawer] = useState(false);
+  const navigation = useRef<HTMLElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const [profile, setProfile] = useState(false);
   const [search, setSearch] = useState("");
   const user = useAuth((s) => s.user)!;
+  const adminLinks = [
+    ["/admin", "Dashboard", House],
+    ["/admin/content", "Listening library", Headphones],
+    ["/admin/reading", "Reading", BookOpen],
+    ...(user.can_view_users
+      ? ([["/admin/users", "Users & statistics", Users]] as const)
+      : []),
+    ...(user.is_superuser
+      ? ([
+          ["/admin/management", "Administrators & activity", Settings],
+        ] as const)
+      : []),
+    [profilePath, "Profile & settings", UserRound],
+  ] as const;
+  function navigationClass(to: string, active: boolean) {
+    return active ||
+      (to === "/admin/content" &&
+        /^\/admin\/(?:\d+|materials)(?:\/|$)/.test(location.pathname))
+      ? "active"
+      : "";
+  }
+
   const navigate = useNavigate();
   const location = useLocation();
   const cache = useQueryClient();
+  const switchParams = new URLSearchParams(location.search);
+  admin
+    ? switchParams.delete("workspace")
+    : switchParams.set("workspace", "admin");
+  const switchTarget = location.pathname.startsWith("/practice/")
+    ? `${location.pathname}${switchParams.size ? `?${switchParams}` : ""}`
+    : admin
+      ? "/"
+      : "/admin";
   useEffect(() => {
     window.scrollTo(0, 0);
     setDrawer(false);
@@ -86,6 +143,44 @@ function Shell() {
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, []);
+  useEffect(() => {
+    if (!drawer || !window.matchMedia("(max-width: 760px)").matches) return;
+    const media = window.matchMedia("(max-width: 760px)");
+    const closeOnDesktop = () => {
+      if (!media.matches) setDrawer(false);
+    };
+    media.addEventListener("change", closeOnDesktop);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const panel = navigation.current;
+    const focusable = () =>
+      Array.from(
+        panel?.querySelectorAll<HTMLElement>(
+          "a[href], button:not([disabled]), input:not([disabled])",
+        ) || [],
+      );
+    focusable()[0]?.focus();
+    function trapFocus(event: KeyboardEvent) {
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      const first = items[0],
+        last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+    panel?.addEventListener("keydown", trapFocus);
+    return () => {
+      media.removeEventListener("change", closeOnDesktop);
+      document.body.style.overflow = previousOverflow;
+      panel?.removeEventListener("keydown", trapFocus);
+      menuButton.current?.focus({ preventScroll: true });
+    };
+  }, [drawer]);
   async function logout() {
     await post("auth/logout/");
     useAuth.getState().clear();
@@ -93,9 +188,14 @@ function Shell() {
   }
   function searchSubmit(e: FormEvent) {
     e.preventDefault();
-    navigate(`/library?search=${encodeURIComponent(search)}`);
+    navigate(
+      `${admin ? "/admin/content" : "/library"}?search=${encodeURIComponent(search)}`,
+    );
   }
-  if (/^\/mock\/\d+\/?$/.test(location.pathname))
+  const readingMock = /^\/reading\/full\/attempts\/\d+\/?$/.test(
+    location.pathname,
+  );
+  if (readingMock || /^\/mock\/\d+\/?$/.test(location.pathname))
     return (
       <div className="exam-shell">
         <a className="skip-link" href="#main-content">
@@ -104,29 +204,49 @@ function Shell() {
         <header className="exam-topbar">
           <Brand />
           <span className="exam-candidate">
-            <Headphones size={17} />
-            Listening · {user.username}
+            {readingMock ? <BookOpen size={17} /> : <Headphones size={17} />}
+            {readingMock ? "Reading" : "Listening"} · {user.username}
           </span>
           <div id="exam-audio-slot" />
           <div id="exam-controls-slot" />
-          <Link to="/mock-tests" className="exam-exit" aria-label="Save & exit">
+          <Link
+            to={readingMock ? "/reading" : "/mock-tests"}
+            className="exam-exit"
+            aria-label="Save & exit"
+            onClick={
+              readingMock
+                ? (e) => {
+                    const exit = new Event("reading-mock-exit", {
+                      cancelable: true,
+                    });
+                    if (!window.dispatchEvent(exit)) e.preventDefault();
+                  }
+                : undefined
+            }
+          >
             <span className="exam-exit-label">Save & exit</span>
             <LogOut size={16} aria-hidden="true" />
           </Link>
         </header>
-        <main id="main-content" className="exam-main">
+        <main
+          id="main-content"
+          className={`exam-main${readingMock ? " reading-exam-main" : ""}`}
+        >
           <Outlet />
         </main>
         <div id="exam-navigation-slot" />
       </div>
     );
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell ${admin ? "admin-workspace" : "learner-workspace"}`}
+    >
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
       <header className="topbar">
         <button
+          ref={menuButton}
           className="icon-button mobile-menu"
           aria-label="Open navigation"
           aria-expanded={drawer}
@@ -135,12 +255,16 @@ function Shell() {
         >
           <Menu />
         </button>
-        <Brand />
+        <Brand home={admin ? "/admin" : "/"} />
         <form className="global-search" onSubmit={searchSubmit}>
           <Search size={20} />
           <input
-            aria-label="Search materials"
-            placeholder="Search for tests, topics or keywords..."
+            aria-label={admin ? "Search content" : "Search materials"}
+            placeholder={
+              admin
+                ? "Search your content..."
+                : "Search for tests, topics or keywords..."
+            }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -148,14 +272,15 @@ function Shell() {
         </form>
         <div className="header-actions">
           <Link
-            to="/progress"
+            to={profilePath}
             className="icon-button"
-            aria-label="Learning activity"
+            aria-label="Profile settings"
           >
-            <Bell size={23} />
+            <Settings size={21} />
           </Link>
           <button
             className="profile-button"
+            aria-label="Account menu"
             aria-expanded={profile}
             onClick={() => setProfile(!profile)}
           >
@@ -163,11 +288,25 @@ function Shell() {
               {user.username.slice(0, 2).toUpperCase()}
             </span>
             <span className="profile-name">{user.username}</span>
+            {user.can_edit && (
+              <span className="workspace-badge">
+                {admin ? "Admin" : "Learner"}
+              </span>
+            )}
             <ChevronDown size={16} />
           </button>
           {profile && (
             <div className="profile-menu">
-              <Link to="/profile">My profile</Link>
+              <div className="workspace-menu-title">
+                {admin ? "Admin workspace" : "Learner workspace"}
+              </div>
+              <Link to={profilePath}>Profile & settings</Link>
+              {user.can_edit && (
+                <Link to={switchTarget} className="workspace-switch">
+                  {admin ? <Headphones size={17} /> : <Settings size={17} />}
+                  Switch to {admin ? "learner" : "admin"} mode
+                </Link>
+              )}
               <button onClick={() => void logout()}>
                 <LogOut size={16} />
                 Sign out
@@ -184,59 +323,86 @@ function Shell() {
         />
       )}
       <aside
+        ref={navigation}
         id="workspace-navigation"
         className={`sidebar ${drawer ? "open" : ""}`}
       >
-        <div className="sidebar-label">YOUR WORKSPACE</div>
+        <div className="mobile-drawer-heading">
+          <strong>{admin ? "Admin workspace" : "Your workspace"}</strong>
+          <button
+            className="icon-button"
+            aria-label="Close menu"
+            onClick={() => setDrawer(false)}
+          >
+            <X size={22} />
+          </button>
+        </div>
+        <div className="sidebar-label">
+          {admin ? "ADMIN WORKSPACE" : "YOUR WORKSPACE"}
+        </div>
         <nav aria-label="Main navigation">
-          {links.map(([to, label, Icon]) => (
-            <NavLink key={to} to={to} end={to === "/"}>
+          {(admin ? adminLinks : links).map(([to, label, Icon]) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === "/" || to === "/admin"}
+              className={({ isActive }) => navigationClass(to, isActive)}
+            >
               <Icon size={21} />
               <span>{label}</span>
             </NavLink>
           ))}
         </nav>
-        <div className="future-nav">
-          <span>COMING LATER</span>
-          {[
-            ["reading", "Reading"],
-            ["writing", "Writing"],
-            ["speaking", "Speaking"],
-          ].map(([key, title]) => (
-            <NavLink key={key} to={`/future/${key}`}>
-              <BookOpen size={17} />
-              {title}
-              <small>Future</small>
-            </NavLink>
-          ))}
-        </div>
-        {user.can_edit && (
-          <div className="admin-nav">
-            <NavLink to="/admin">
-              <Settings size={21} />
-              Admin Panel
-              <span className="staff-dot" />
-            </NavLink>
-          </div>
-        )}
-        <div className="sidebar-footer">
-          <div className="mini-mark">
-            <AudioLines size={21} />
-          </div>
-          <strong>
-            A little practice.
-            <br />A little more confidence.
-          </strong>
-          <span>Your next step starts here.</span>
-        </div>
       </aside>
-      <main id="main-content" className="main-content">
+      <main
+        id="main-content"
+        className="main-content"
+        inert={drawer || undefined}
+      >
         <Outlet />
         <footer className="footer">
           <span>© {new Date().getFullYear()} PracticeIELTS</span>
-          <span>Small steps. Real progress.</span>
         </footer>
       </main>
+      <nav
+        className="mobile-bottom-nav"
+        style={
+          admin
+            ? {
+                gridTemplateColumns: `repeat(${adminLinks.length}, minmax(0, 1fr))`,
+              }
+            : undefined
+        }
+        aria-label="Quick navigation"
+        inert={drawer || undefined}
+      >
+        {(admin ? adminLinks : learnerQuickLinks).map(([to, label, Icon]) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={to === "/" || to === "/admin"}
+            className={({ isActive }) => navigationClass(to, isActive)}
+            aria-label={label}
+          >
+            <Icon size={21} aria-hidden="true" />
+            <span>
+              {admin
+                ? to === "/admin"
+                  ? "Home"
+                  : to === "/admin/content"
+                    ? "Content"
+                    : to === "/admin/reading"
+                      ? "Reading"
+                      : to === "/admin/users"
+                        ? "Users"
+                        : to === "/admin/management"
+                          ? "Manage"
+                          : "Profile"
+                : label}
+            </span>
+          </NavLink>
+        ))}
+      </nav>
     </div>
   );
 }
@@ -408,6 +574,9 @@ export function App() {
   if (!ready) return <Loading />;
   return (
     <Routes>
+      <Route path="shared/practice/:token" element={<SharedPractice />} />
+      <Route path="shared/mock/:token" element={<SharedMock />} />
+      <Route path="shared/reading/:token" element={<SharedReadingResult />} />
       <Route
         path="/login"
         element={user ? <Navigate to="/" replace /> : <Auth />}
@@ -428,11 +597,33 @@ export function App() {
           path="mock-tests"
           element={<NestedLibrary defaultMode="mock" />}
         />
+        <Route path="mock-tests/history" element={<MockHistory />} />
         <Route path="mock/:id" element={<MockPage />} />
         <Route path="mock/:id/results" element={<MockResults />} />
+        <Route path="reading" element={<ReadingLibrary />} />
+        <Route path="reading/history" element={<ReadingHistory />} />
+        <Route path="reading/attempts/:id" element={<ReadingAttemptPage />} />
+        <Route
+          path="reading/full/attempts/:id"
+          element={<ReadingAttemptPage full />}
+        />
+        <Route
+          path="reading/full/attempts/:id/results"
+          element={<ReadingAttemptPage full results />}
+        />
+        <Route path="admin/reading" element={<ReadingReview />} />
+        <Route path="admin/reading/import" element={<ReadingImport />} />
+        <Route
+          path="admin/reading/imports/:id"
+          element={<ReadingImportDetail />}
+        />
+        <Route path="admin/reading/:id" element={<ReadingReview />} />
         <Route path="future/:module" element={<FutureModule />} />
         <Route path="profile" element={<Profile />} />
-        <Route path="admin" element={<TestStudio />} />
+        <Route path="admin/users" element={<AdminUsers />} />
+        <Route path="admin" element={<AdminHome />} />
+        <Route path="admin/content" element={<TestStudio />} />
+        <Route path="admin/management" element={<AdminManagement />} />
         <Route path="admin/materials" element={<Admin />} />
         <Route path="tests/:id" element={<TestDetail />} />
         <Route path="admin/:id" element={<Admin />} />

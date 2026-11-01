@@ -1,0 +1,11 @@
+.pdf-highlights{position:absolute;inset:0;pointer-events:none;z-index:6;}
+.pdf-highlights.is-drawing{pointer-events:auto;z-index:30;cursor:crosshair;touch-action:none;}
+.pdf-saved-highlight{position:absolute;background:rgb(255 211 50 / 38%);mix-blend-mode:multiply;pointer-events:none;border-radius:2px;}
+.pdf-zoom{flex-wrap:wrap;gap:10px;}
+.pdf-zoom>.pdf-highlight-buttons{display:flex;gap:7px;flex-wrap:wrap;white-space:normal;align-items:center;min-width:0;}
+.pdf-zoom .pdf-highlight-buttons button{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:auto;height:auto;min-width:0;min-height:36px;max-width:100%;padding:8px 11px;border:1px solid #dce7ed;border-radius:8px;background:#fff;color:#486474;font-size:11px;font-weight:600;line-height:1.4;white-space:normal;cursor:pointer;transition:background .15s,border-color .15s;}
+.pdf-zoom .pdf-highlight-buttons button:hover:not(:disabled){background:#eff7f8;border-color:#a9d6dd;color:#127f8e;}
+.pdf-zoom .pdf-highlight-buttons button[aria-pressed=true]{background:#fff3c4;border-color:#dec575;color:#806211;}
+.pdf-zoom .pdf-highlight-buttons button:disabled{opacity:.45;cursor:default;}
+.pdf-zoom .pdf-highlight-buttons button:focus-visible{outline:3px solid #168c9c;outline-offset:2px;}
+@media(max-width:600px){.pdf-zoom>.pdf-highlight-buttons{flex-basis:100%;gap:8px;}.pdf-zoom .pdf-highlight-buttons button{flex:1;min-height:40px;}.pdf-zoom>span{font-size:11px;}.pdf-zoom{padding-block:12px;}}

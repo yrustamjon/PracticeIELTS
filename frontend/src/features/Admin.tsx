@@ -47,6 +47,7 @@ export function Admin() {
 }
 function Studio() {
   const { id } = useParams();
+  const canDelete = useAuth((s) => s.user?.can_delete);
   const navigate = useNavigate();
   const cache = useQueryClient();
   const [error, setError] = useState<unknown>();
@@ -329,13 +330,13 @@ function Studio() {
                     </small>
                   </span>
                 </button>
-                <button
+                {canDelete && <button
                   className="icon-button"
                   aria-label={`Delete ${c.name}`}
                   onClick={() => void removeCategory(c)}
                 >
                   <Trash2 size={15} />
-                </button>
+                </button>}
               </div>
             ))}
           </div>
@@ -387,6 +388,7 @@ function Editor({
   material: Material;
   onSaved: () => void;
 }) {
+  const canDelete = useAuth((s) => s.user?.can_delete);
   const [segments, setSegments] = useState<Segment[]>(
     m.transcript_audio_id && m.audio?.id !== m.transcript_audio_id
       ? []
@@ -417,6 +419,8 @@ function Editor({
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [reviewed, setReviewed] = useState(false);
+  const [questionsReviewed, setQuestionsReviewed] = useState(false);
+  useEffect(() => setQuestionsReviewed(false), [m.id, questionDirty, detailsDirty]);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [playRequest, setPlayRequest] = useState(0);
   const [removed, setRemoved] = useState<{
@@ -713,7 +717,7 @@ function Editor({
           className="back-link"
           to={
             m.test_part || m.full_test
-              ? `/admin?category=${m.category}&test=${m.test_part?.test || m.full_test}`
+              ? `/admin/content?category=${m.category}&test=${m.test_part?.test || m.full_test}`
               : "/admin/materials"
           }
         >
@@ -1106,7 +1110,7 @@ function Editor({
                               </label>
                             </div>
                           </details>
-                          <button
+                          {canDelete && <button
                             className="text-link review-remove"
                             disabled={busy || working}
                             aria-label={`Remove segment ${i + 1}`}
@@ -1114,7 +1118,7 @@ function Editor({
                           >
                             <Trash2 size={13} />
                             Remove sentence
-                          </button>
+                          </button>}
                         </div>
                       </div>
                     ))}
@@ -1164,6 +1168,21 @@ function Editor({
           </div>
           <aside>
             <section id="material-publish" className="panel publish-panel">
+              {!!m.question_count && (
+                <div className="notice-box">
+                  <h3>Publish Mock questions</h3>
+                  <p>Publish the reviewed question paper independently. Audio and Dictation can be added later.</p>
+                  <label className="checkbox-label">
+                    <input type="checkbox" checked={questionsReviewed} onChange={(e) => setQuestionsReviewed(e.target.checked)} />
+                    I checked the complete paper, answer-field positions and answer keys against the source.
+                  </label>
+                  <button className="button primary" disabled={busy || questionDirty || detailsDirty || !questionsReviewed} onClick={() => void run(async () => {
+                    await post(`materials/${m.id}/publish-questions/`, {confirm_review: true});
+                    setQuestionsReviewed(false);
+                    onSaved();
+                  }, "Reviewed Mock questions published.")}>Publish reviewed Mock questions</button>
+                </div>
+              )}
               <h2>One material. All practice levels.</h2>
               <ul className="publish-checks">
                 <li>

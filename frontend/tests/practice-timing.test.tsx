@@ -1,5 +1,6 @@
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -9,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Practice } from "../src/features/Practice";
+import { useAuth } from "../src/stores/auth";
 import { api, type Session } from "../src/services/api";
 
 vi.mock("../src/services/api", () => ({ api: vi.fn(), post: vi.fn() }));
@@ -55,6 +57,7 @@ const initial = (): Session => ({
 let session: Session;
 
 beforeEach(() => {
+  useAuth.getState().set("fixture", { id: 1, username: "Editor", email: "", role: "admin", can_edit: true });
   session = initial();
   vi.mocked(api).mockReset();
   vi.mocked(api).mockImplementation(async (path, options) => {
@@ -79,13 +82,16 @@ beforeEach(() => {
     return session as never;
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  useAuth.getState().clear();
+});
 
-function show(value = session) {
+function show(value = session, adminMode = true) {
   session = value;
   const router = createMemoryRouter(
     [{ path: "/practice/:id", element: <Practice /> }],
-    { initialEntries: ["/practice/15"] },
+    { initialEntries: [`/practice/15${adminMode ? "?workspace=admin" : ""}`] },
   );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -101,7 +107,12 @@ async function openEditor() {
   fireEvent.click(await screen.findByRole("button", { name: "Adjust timing" }));
 }
 
-describe("Admin Easy Practice timing", () => {
+describe("Admin Practice timing", () => {
+  it("shows the admin timing button directly on ordinary Practice routes", async () => {
+    show(session, false);
+    expect(await screen.findByRole("button", {name: "Adjust timing"})).toBeTruthy();
+  });
+
   it("previews precise boundaries and saves the active chunk with answers retained", async () => {
     show();
     await openEditor();
@@ -143,8 +154,6 @@ describe("Admin Easy Practice timing", () => {
 
   it.each([
     { can_edit_timing: false },
-    { difficulty: "medium", can_edit_timing: true },
-    { difficulty: "hard", can_edit_timing: true },
   ])(
     "hides correction controls for unsupported sessions: %o",
     async (values) => {
@@ -155,6 +164,16 @@ describe("Admin Easy Practice timing", () => {
       ).not.toBeInTheDocument();
     },
   );
+
+  it.each(["medium", "hard"])("saves timing in %s while preserving the answer", async (difficulty) => {
+    show({ ...session, difficulty });
+    await openEditor();
+    fireEvent.change(screen.getByLabelText("Start time (seconds)"), { target: { value: "2.100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
+    await waitFor(() => expect(screen.getByTestId("playback-window")).toHaveTextContent("2100–4000"));
+    expect(screen.getByLabelText("What did you hear?")).toHaveValue("my saved answer");
+    expect(await screen.findByText(`Timing saved for ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} Practice.`)).toBeTruthy();
+  });
 
   it("allows wider preview but prevents saving a window that overlaps the next exercise", async () => {
     show();
@@ -207,6 +226,34 @@ describe("Admin Easy Practice timing", () => {
     expect(
       screen.getByRole("button", { name: "Preview timing" }),
     ).toBeDisabled();
+  });
+
+  it("serializes autosave behind an in-flight timing save", async () => {
+    const fallback = vi.mocked(api).getMockImplementation()!;
+    let timingActive = false;
+    let overlappingSave = false;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (path.endsWith("/timing/")) {
+        timingActive = true;
+        try { await pending; return await fallback(path, options); }
+        finally { timingActive = false; }
+      }
+      if (options?.method === "PATCH" && timingActive) overlappingSave = true;
+      return fallback(path, options);
+    });
+    show();
+    await openEditor();
+    fireEvent.change(screen.getByLabelText("Start time (seconds)"), {target:{value:"2.100"}});
+    fireEvent.change(screen.getByLabelText("What did you hear?"), {target:{value:"Answer awaiting autosave"}});
+    fireEvent.click(screen.getByRole("button",{name:"Save timing"}));
+    await waitFor(() => expect(timingActive).toBe(true));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 900)); });
+    const overlapped = overlappingSave;
+    await act(async () => { release(); await pending; });
+    await screen.findByText("Timing saved for Easy Practice.");
+    expect(overlapped).toBe(false);
   });
 
   it("shows a failed save without replacing playback or losing the answer", async () => {

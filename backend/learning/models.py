@@ -156,11 +156,12 @@ class Segment(models.Model):
 
 
 class PracticeTimingRevision(models.Model):
-    """Append-only Easy playback corrections, separate from transcript content."""
+    """Append-only difficulty-scoped playback corrections."""
 
     version = models.ForeignKey(
         TranscriptVersion, on_delete=models.PROTECT, related_name="timing_revisions"
     )
+    difficulty = models.CharField(max_length=8, choices=[(x, x) for x in ("easy", "medium", "hard")], default="easy")
     grouping_version = models.PositiveSmallIntegerField(default=1)
     overrides = models.JSONField(default=dict)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
@@ -168,6 +169,7 @@ class PracticeTimingRevision(models.Model):
 
     class Meta:
         ordering = ["-id"]
+        constraints = [models.CheckConstraint(condition=Q(difficulty__in=["easy", "medium", "hard"]), name="practice_timing_revision_mode")]
 
 
 class PracticeSession(models.Model):
@@ -216,8 +218,8 @@ class PracticeSession(models.Model):
                 name="unique_corrected_practice_session",
             ),
             models.CheckConstraint(
-                condition=Q(timing_revision__isnull=True) | Q(difficulty="easy"),
-                name="timing_revision_easy_only",
+                condition=Q(timing_revision__isnull=True) | Q(difficulty__in=["easy", "medium", "hard"]),
+                name="timing_revision_learning_modes",
             ),
         ]
 
@@ -238,5 +240,13 @@ class StudentResponse(models.Model):
 class AuditLog(models.Model):
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     action = models.CharField(max_length=80)
+    details = models.JSONField(default=dict, blank=True)
     material = models.ForeignKey(Material, null=True, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class SharedPracticeResult(models.Model):
+    session = models.OneToOneField(PracticeSession, on_delete=models.CASCADE, related_name="shared_result")
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    snapshot = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)

@@ -1,0 +1,39 @@
+.skill-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px;
+  margin: 0 0 24px;
+  width: fit-content;
+  max-width: 100%;
+  background: #eaf0f4;
+  border: 1px solid #dce5ec;
+  border-radius: 12px;
+}
+.skill-navigation > a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #526b80;
+  text-decoration: none;
+}
+.skill-navigation > a.selected {
+  color: #14283d;
+  background: #fff;
+  border-color: #d9e5eb;
+  box-shadow: 0 1px 3px #14283d08;
+}
+.skill-navigation > a:hover { color: #147d92; }
+.skill-navigation > a:focus-visible { outline: 2px solid #147d92; outline-offset: 2px; }
+.skill-navigation svg { width: 21px; height: 21px; flex: 0 0 auto; color: #147d92; }
+.skill-navigation strong, .skill-navigation small { display: block; }
+.skill-navigation strong { font-size: 14px; }
+.skill-navigation small { font-size: 11px; margin-top: 3px; }
+@media (max-width: 500px) {
+  .skill-navigation { width: 100%; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .skill-navigation > a { padding: 10px 8px; gap: 8px; }
+  .skill-navigation small { line-height: 1.4; }
+}

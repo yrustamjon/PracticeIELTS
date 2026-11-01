@@ -1203,7 +1203,7 @@ test("approved book/test flow publishes separate Parts and assembles a real Full
   const token = (await (await signedIn).json()).access;
   const siblingCategories: number[] = [];
   try {
-  await page.goto("/admin");
+  await page.goto("/admin/content");
   async function adminFrame() {
     await page.evaluate(() => window.scrollTo(0, 0));
     return Promise.all(

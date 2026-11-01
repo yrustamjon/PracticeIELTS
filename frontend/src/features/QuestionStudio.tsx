@@ -19,6 +19,7 @@ import {
   type PdfField,
   type PaperSection,
 } from "../services/api";
+import { useAuth } from "../stores/auth";
 import { HtmlQuestionPaper } from "../components/HtmlQuestionPaper";
 import { ErrorState } from "../components/ui";
 import { PrivateImage } from "../components/PrivateImage";
@@ -62,6 +63,7 @@ export function QuestionStudio({
   onSaved: () => void;
   onDirty: (dirty: boolean) => void;
 }) {
+  const canDelete = useAuth((s) => s.user?.can_delete);
   const startNumber = assignedPart ? (assignedPart - 1) * 10 + 1 : 1;
   const cache = useQueryClient();
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
@@ -486,7 +488,7 @@ export function QuestionStudio({
               </label>
               <p className="muted">
                 Review the blue boxes. To move or resize a field, choose its
-                question and drag a new rectangle over the blank. On scanned
+                question, tap Place answer field, then drag a new rectangle over the blank. On scanned
                 papers, add questions below and draw each field manually.
               </p>
               <Suspense fallback={<p>Opening PDF editor…</p>}>
@@ -597,20 +599,25 @@ export function QuestionStudio({
           <article className="question-author" key={i}>
             <div className="question-author-head">
               <strong>Question {i + 1}</strong>
-              <button
-                className="icon-button"
-                aria-label={`Remove question ${i + 1}`}
-                onClick={() => {
-                  setQuestions((list) =>
-                    list
-                      .filter((_, n) => n !== i)
-                      .map((item, n) => ({ ...item, number: n + startNumber })),
-                  );
-                  setDirty(true);
-                }}
-              >
-                <Trash2 size={15} />
-              </button>
+              {canDelete && (
+                <button
+                  className="icon-button"
+                  aria-label={`Remove question ${i + 1}`}
+                  onClick={() => {
+                    setQuestions((list) =>
+                      list
+                        .filter((_, n) => n !== i)
+                        .map((item, n) => ({
+                          ...item,
+                          number: n + startNumber,
+                        })),
+                    );
+                    setDirty(true);
+                  }}
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
             </div>
             <div className="form-grid">
               <label>
@@ -826,7 +833,7 @@ export function QuestionStudio({
         </label>
         <button
           className="button primary"
-          disabled={!questions.length || !audioReady || busy || !dirty}
+          disabled={!questions.length || busy || !dirty}
           onClick={() => void save()}
         >
           <Save size={16} />
@@ -835,7 +842,7 @@ export function QuestionStudio({
       </div>
       {!audioReady && (
         <p className="muted export-note">
-          Upload audio before saving the question set.
+          Questions can be saved and published now. Audio can be added later.
         </p>
       )}
       <p className="muted export-note">

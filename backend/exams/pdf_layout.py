@@ -6,6 +6,8 @@ import re
 import pypdfium2 as pdfium
 import pypdfium2.raw as raw
 from django.http import HttpResponse
+from django.core.cache import caches
+from learning.private_media_cache import file_revision, not_modified, private_headers
 from pypdf import PdfReader, PdfWriter
 from rest_framework.exceptions import ValidationError
 
@@ -129,9 +131,21 @@ def detect_pdf_blanks(document, pages):
     return fields, drafts, warnings
 
 
-def isolated_pdf_page(document, page):
+def isolated_pdf_page(document, page, request=None):
     if not 1 <= page <= document.page_count:
         raise ValidationError({"page": "Page does not exist."})
+    key = f"pdf-page-v1:{document.pk}:{file_revision(document.file)}:{page}"
+    etag = f'"{key}"'
+    if request is not None:
+        cached_response = not_modified(request, etag)
+        if cached_response is not None:
+            return cached_response
+    cache = caches["pdf_pages"]
+    data = cache.get(key)
+    if data is not None:
+        response = private_headers(HttpResponse(data, content_type="application/pdf"), etag)
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
     try:
         with document.file.open("rb") as source:
             reader = PdfReader(io.BytesIO(source.read(15 * 1024 * 1024 + 1)))
@@ -153,7 +167,9 @@ def isolated_pdf_page(document, page):
         raise ValidationError(
             {"document": "This PDF page could not be opened."}
         ) from exc
-    response = HttpResponse(output.getvalue(), content_type="application/pdf")
-    response["Cache-Control"] = "private, no-store"
+    data = output.getvalue()
+    if len(data) <= 2 * 1024 * 1024:
+        cache.set(key, data)
+    response = private_headers(HttpResponse(data, content_type="application/pdf"), etag)
     response["X-Content-Type-Options"] = "nosniff"
     return response

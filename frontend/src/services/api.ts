@@ -5,6 +5,9 @@ export type User = {
   email: string;
   role: string;
   can_edit: boolean;
+  is_superuser?: boolean;
+  can_delete?: boolean;
+  can_view_users?: boolean;
 };
 export type Category = {
   id: number;
@@ -53,6 +56,7 @@ export type Material = {
   rights_confirmed: boolean;
   status: string;
   mock_available?: boolean;
+  practice_available?: boolean;
   question_count?: number;
   transcript_audio_id?: number | null;
   part_question_counts?: Record<string, number>;
@@ -245,7 +249,7 @@ export type QuestionSet = {
   presentation: "text" | "html" | "pdf" | "legacy_pdf";
   sections?: PaperSection[];
   id: number;
-  audio: number;
+  audio: number | null;
   document: number | null;
   document_pages: number[];
   duration_seconds: number;
@@ -276,6 +280,8 @@ export type MockAttempt = {
   submitted_at: string | null;
   answers: Record<string, string | string[]>;
   audio_started: boolean;
+  review_audio_url?: string | null;
+  audio_available?: boolean;
   questions: ExamQuestion[];
   document_pages: number[];
   score: number | null;
@@ -308,6 +314,8 @@ export type TestMaterial = {
   title: string;
   status: string;
   mock_available: boolean;
+  practice_available?: boolean;
+  audio_available?: boolean;
   question_count: number;
 };
 export type ListeningTest = {

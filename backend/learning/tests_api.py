@@ -1,7 +1,7 @@
 """Book/test hierarchy. Existing independent materials retain their existing routes."""
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Prefetch, Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
@@ -47,13 +47,15 @@ class ListeningTestSerializer(serializers.ModelSerializer):
             )
         return value
 
-    def summary(self, m):
+    def summary(self, m, question_count=None):
         return {
             "id": m.pk,
             "title": m.title,
-            "status": "published" if m.published_version_id else "draft",
+            "status": "published" if m.published_version_id or m.published_questions_id else "draft",
             "mock_available": bool(m.published_questions_id),
-            "question_count": m.published_questions.questions.count()
+            "practice_available": bool(m.published_version_id),
+            "audio_available": bool(m.published_questions_id and m.published_questions.audio_id),
+            "question_count": question_count if question_count is not None else m.published_questions.questions.count()
             if m.published_questions_id
             else 0,
         }
@@ -68,17 +70,18 @@ class ListeningTestSerializer(serializers.ModelSerializer):
     def get_parts(self, obj) -> list[dict]:
         editor = manages(self.context["request"].user, obj)
         return [
-            {"number": p.number, **self.summary(p.material)}
-            for p in obj.parts.select_related("material__published_questions")
-            if editor or p.material.published_version_id
+            {"number": p.number, **self.summary(p.material, getattr(p, "published_question_count", None))}
+            for p in obj.parts.all()
+            if editor or p.material.published_version_id or p.material.published_questions_id
         ]
 
     def get_full(self, obj) -> dict | None:
         if obj.full_material_id and (
             obj.full_material.published_version_id
+            or obj.full_material.published_questions_id
             or manages(self.context["request"].user, obj)
         ):
-            return self.summary(obj.full_material)
+            return self.summary(obj.full_material, getattr(obj, "full_question_count", None))
         return None
 
     def get_assembly_error(self, obj) -> str:
@@ -107,10 +110,17 @@ class ListeningTestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         q = ListeningTest.objects.select_related(
             "category", "full_material__published_questions"
-        ).prefetch_related("parts__material")
+        ).annotate(
+            full_question_count=Count("full_material__published_questions__questions", distinct=True)
+        ).prefetch_related(Prefetch(
+            "parts",
+            queryset=TestPart.objects.select_related("material__published_questions").annotate(
+                published_question_count=Count("material__published_questions__questions")
+            ).order_by("number"),
+        )).order_by("title", "id")
         visible = Q(parts__material__published_version__isnull=False) | Q(
             full_material__published_version__isnull=False
-        )
+        ) | Q(parts__material__published_questions__isnull=False) | Q(full_material__published_questions__isnull=False)
         if (
             self.request.query_params.get("owned") == "true"
             and user.role == "teacher"
@@ -243,5 +253,15 @@ class ListeningTestViewSet(viewsets.ModelViewSet):
         from .test_assembly import queue_assembly
 
         queue_assembly(obj.pk, retry=True)
+        obj.refresh_from_db()
+        return Response(self.get_serializer(obj).data)
+
+    @extend_schema(request=serializers.Serializer, responses=ListeningTestSerializer)
+    @action(detail=True, methods=["post"], url_path="publish-question-full")
+    def publish_question_full(self, request, pk=None):
+        obj = self.editable()
+        from .test_assembly import publish_question_only_full
+
+        publish_question_only_full(obj.pk, request.user, request.data.get("confirm_review") is True, include_audio=False)
         obj.refresh_from_db()
         return Response(self.get_serializer(obj).data)

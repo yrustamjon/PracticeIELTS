@@ -36,10 +36,10 @@ async function login(page: Page, username: string) {
   ).toBeVisible();
   return token;
 }
-async function start(page: Page, token: string) {
+async function start(page: Page, token: string, difficulty = "easy") {
   const response = await page.request.post("/api/v1/sessions/", {
     headers: { Authorization: `Bearer ${token}` },
-    data: { material: fixtureData.material, difficulty: "easy" },
+    data: { material: fixtureData.material, difficulty },
   });
   expect(response.ok()).toBeTruthy();
   return response.json();
@@ -63,7 +63,7 @@ test("admin adjusts an Easy chunk with preview, reload persistence and unchanged
   const studentPage = await context.newPage();
   const studentToken = await login(studentPage, fixtureData.student);
   const oldStudent = await start(studentPage, studentToken);
-  await page.goto(`/practice/${admin.id}`);
+  await page.goto(`/practice/${admin.id}?workspace=admin`);
   await page
     .getByRole("button", { name: "Go to segment 2", exact: true })
     .click();
@@ -113,7 +113,7 @@ test("admin adjusts an Easy chunk with preview, reload persistence and unchanged
     )
     .toBe(true);
   await page.screenshot({
-    path: "/private/tmp/practice-easy-timing-desktop.png",
+    path: "/tmp/practice-easy-timing-desktop.png",
   });
   await page.getByRole("button", { name: "Save timing", exact: true }).click();
   await expect(
@@ -150,8 +150,9 @@ test("admin adjusts an Easy chunk with preview, reload persistence and unchanged
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByRole("button", { name: "Adjust timing", exact: true }),
-  ).toHaveCount(0);
-  await page.goto(`/practice/${admin.id}`);
+  ).toBeVisible();
+  await expect(page).toHaveURL(/workspace=admin/);
+  await page.goto(`/practice/${admin.id}?workspace=admin`);
   await page.setViewportSize({ width: 390, height: 844 });
   await page
     .getByRole("button", { name: "Adjust timing", exact: true })
@@ -163,8 +164,49 @@ test("admin adjusts an Easy chunk with preview, reload persistence and unchanged
     ),
   ).toBe(true);
   await page.screenshot({
-    path: "/private/tmp/practice-easy-timing-mobile.png",
+    path: "/tmp/practice-easy-timing-mobile.png",
     fullPage: true,
   });
   await context.close();
 });
+
+
+for (const difficulty of ["medium", "hard"]) {
+  test(`admin adjusts ${difficulty} timing with saved answers and student history preserved`, async ({ page, browser }) => {
+    await page.setViewportSize({width:390,height:844});
+    page.on("response", response => { if(response.status() >= 500) console.log("Failed timing QA response", new URL(response.url()).pathname, response.status()); });
+    const token = await login(page, fixtureData.admin);
+    const admin = await start(page, token, difficulty);
+    const context = await browser.newContext();
+    const studentPage = await context.newPage();
+    try {
+      const studentToken = await login(studentPage, fixtureData.student);
+      const oldStudent = await start(studentPage, studentToken, difficulty);
+      await page.goto(`/practice/${admin.id}?workspace=admin`);
+      await page.getByLabel("What did you hear?").fill(`My ${difficulty} answer`);
+      await page.getByRole("button", {name:"Adjust timing",exact:true}).click();
+      await page.getByLabel("Start time (seconds)").fill("0.150");
+      const end = difficulty === "medium" ? "2.400" : "6.900";
+      await page.getByLabel("End time (seconds)").fill(end);
+      await page.getByRole("button",{name:"Preview timing",exact:true}).click();
+      await expect.poll(()=>page.locator("audio").evaluate(a=>(a as HTMLAudioElement).currentTime)).toBeGreaterThanOrEqual(0.15);
+      await page.getByRole("button",{name:"Save timing",exact:true}).click();
+      await expect(page.getByText(`Timing saved for ${difficulty.charAt(0).toUpperCase()+difficulty.slice(1)} Practice.`,{exact:true})).toBeVisible();
+      await page.reload();
+      await page.getByRole("button",{name:"Adjust timing",exact:true}).click();
+      await expect(page.getByLabel("Start time (seconds)")).toHaveValue("0.150");
+      await expect(page.getByLabel("End time (seconds)")).toHaveValue(end);
+      await expect(page.getByLabel("What did you hear?")).toHaveValue(`My ${difficulty} answer`);
+      const response = await studentPage.request.get(`/api/v1/sessions/${oldStudent.id}/`,{headers:{Authorization:`Bearer ${studentToken}`}});
+      expect((await response.json()).groups).toEqual(oldStudent.groups);
+      const latest = await start(studentPage, studentToken, difficulty);
+      expect(latest.id).not.toBe(oldStudent.id);
+      expect(latest.groups[0].start_ms).toBe(150);
+      expect(latest.groups[0].end_ms).toBe(Number(end)*1000);
+      await studentPage.goto(`/practice/${latest.id}`);
+      await expect(studentPage.getByRole("heading",{name:"Listen and write",exact:true})).toBeVisible();
+      await expect(studentPage.getByRole("button",{name:"Adjust timing",exact:true})).toHaveCount(0);
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    } finally {await context.close();}
+  });
+}

@@ -1,8 +1,22 @@
+import { AudioPlayer } from "../components/AudioPlayer";
+import { ResultDetails } from "../components/ResultDetails";
+import { ReviewAnswers } from "../components/ReviewFeedback";
+import "./mockReview.css";
+import { HighlightTools } from "../components/HighlightTools";
+import { MockTimingOptions } from "../components/MockTimingOptions";
+import { ResultNavigation } from "../components/ResultNavigation";
 import { createPortal } from "react-dom";
+import { MockShareLink } from "./SharedMock";
 import { HtmlQuestionPaper } from "../components/HtmlQuestionPaper";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
+import {
+  Link,
+  useBlocker,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   Clock,
   FileText,
@@ -19,7 +33,6 @@ import {
 } from "lucide-react";
 import {
   api,
-  apiBlob,
   post,
   type MockAttempt,
   type Material,
@@ -40,9 +53,11 @@ const PdfQuestionPage = lazy(() => import("../components/PdfQuestionPage"));
 export function MockSelection({
   materialId,
   available,
+  audioAvailable = true,
 }: {
   materialId: number;
   available: boolean;
+  audioAvailable?: boolean;
 }) {
   const [timing, setTiming] = useState<"timed" | "untimed">("timed");
   const [timingChosen, setTimingChosen] = useState(false);
@@ -98,43 +113,24 @@ export function MockSelection({
   return (
     <>
       <p className="muted mode-explanation">
-        Use the same recording and exam questions. Choose a timed attempt or
-        work through the mock without a time limit.
+        {audioAvailable
+          ? "Use the recording and exam questions."
+          : "Question-only Mock. Audio has not been added yet."}{" "}
+        Choose a timed attempt or work through the mock without a time limit.
       </p>
-      <div className="difficulty-options exam-timing-options">
-        {[
-          [
-            "timed",
-            "Real Exam · Timed",
-            "A server-enforced countdown. Answers are submitted when the time ends.",
-          ],
-          [
-            "untimed",
-            "Mock · No time limit",
-            "Take as long as you need. Submit your answers when you are ready.",
-          ],
-        ].map(([key, title, text]) => (
-          <label className={timing === key ? "selected" : ""} key={key}>
-            <input
-              type="radio"
-              name="exam-timing"
-              checked={timing === key}
-              onChange={() => {
-                setTimingChosen(true);
-                setTiming(key as "timed" | "untimed");
-              }}
-            />
-            <span>
-              <strong>{title}</strong>
-              <small>{text}</small>
-            </span>
-          </label>
-        ))}
-      </div>
+      <MockTimingOptions
+        timing={timing}
+        onChange={(value) => {
+          setTimingChosen(true);
+          setTiming(value);
+        }}
+      />
       <div className="notice-box">
-        {timing === "timed"
-          ? "The recording plays once per attempt."
-          : "Pause, replay or seek freely, and return whenever you need."}{" "}
+        {!audioAvailable
+          ? "Audio is not available. You can enter, save and submit your answers."
+          : timing === "timed"
+            ? "The recording plays once per attempt."
+            : "Pause, replay or seek freely, and return whenever you need."}{" "}
         Answer keys open after submission.
       </div>
       {active && (
@@ -304,7 +300,6 @@ function ExamAudio({
 }) {
   const audio = useRef<HTMLAudioElement>(null);
   const untimed = attempt.timing === "untimed";
-  const object = useRef("");
   const [started, setStarted] = useState(attempt.audio_started);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>();
@@ -317,7 +312,6 @@ function ExamAudio({
   useEffect(
     () => () => {
       audio.current?.pause();
-      if (object.current) URL.revokeObjectURL(object.current);
       onPlaying(false);
     },
     [],
@@ -331,17 +325,15 @@ function ExamAudio({
         await audio.current.play();
         return;
       }
-      const ticket = await post<{ url: string; ticket: string }>(
-        `mock-attempts/${attempt.id}/start-audio/`,
-      );
+      const ticket = await post<{
+        url: string;
+        ticket: string;
+        duration_ms: number;
+      }>(`mock-attempts/${attempt.id}/start-audio/`);
       setStarted(true);
-      const blob = await apiBlob(ticket.url.replace("/api/v1/", ""), {
-        headers: { "X-Exam-Audio": ticket.ticket },
-      });
-      if (object.current) URL.revokeObjectURL(object.current);
-      object.current = URL.createObjectURL(blob);
+      setDuration(ticket.duration_ms / 1000);
       if (audio.current) {
-        audio.current.src = object.current;
+        audio.current.src = ticket.url;
         audio.current.volume = volume;
         audio.current.playbackRate = speed;
         await audio.current.play();
@@ -357,8 +349,19 @@ function ExamAudio({
       <audio
         ref={audio}
         preload="none"
+        onWaiting={() => setLoading(true)}
+        onPlaying={() => setLoading(false)}
+        onError={() => {
+          setLoading(false);
+          setError(
+            new Error("Recording could not load. Check your connection."),
+          );
+        }}
         onTimeUpdate={(e) => setElapsed(e.currentTarget.currentTime)}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onLoadedMetadata={(e) => {
+          if (Number.isFinite(e.currentTarget.duration))
+            setDuration(e.currentTarget.duration);
+        }}
         onPlay={() => {
           setEnded(false);
           setPlaying(true);
@@ -837,7 +840,12 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
       </div>
       {toolbarSlot ? createPortal(headerControls, toolbarSlot) : headerControls}
       {error != null && <ErrorState error={error} />}
-      {audioSlot ? (
+      {initial.audio_available === false ? (
+        <p className="notice-box" role="status">
+          Audio has not been added yet. This is a question-only Mock; your
+          answers are saved and can be submitted for checking.
+        </p>
+      ) : audioSlot ? (
         createPortal(
           <ExamAudio attempt={initial} onPlaying={setAudioPlaying} />,
           audioSlot,
@@ -865,6 +873,7 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
           {answered} / {initial.total} answered
         </span>
       </div>
+      <HighlightTools key={`${initial.id}-${part}`} selector=".exam-questions" storageKey={`listening-${initial.id}-${part}`} />
       <div className="real-exam-grid">
         <section className="panel exam-questions">
           <div className="workspace-heading">
@@ -980,6 +989,22 @@ function ExamWorkspace({ initial }: { initial: MockAttempt }) {
 
 export function MockResults() {
   const { id } = useParams();
+  const [params] = useSearchParams();
+  const [reviewPart, setReviewPart] = useState(1);
+  const [reviewLayout,setReviewLayout] = useState("stacked");
+  const review = params.get("review") === "1";
+  const page = Number(params.get("history_page"));
+  const historyPath = `/mock-tests/history${Number.isInteger(page) && page > 1 ? `?page=${page}` : ""}`;
+  const navigation = (
+    <ResultNavigation
+      steps={[
+        { label: "Mock Tests", to: "/mock-tests" },
+        { label: "My Mock results", to: historyPath },
+        { label: "Result" },
+      ]}
+      back={{ label: "Back to results", to: historyPath }}
+    />
+  );
   const q = useQuery({
     queryKey: ["mock-results", id],
     queryFn: () => api<MockAttempt>(`mock-attempts/${id}/`),
@@ -989,12 +1014,62 @@ export function MockResults() {
     if (q.data && !q.data.submitted_at)
       navigate(`/mock/${id}`, { replace: true });
   }, [q.data]);
-  if (q.isPending) return <Loading />;
-  if (q.error) return <ErrorState error={q.error} />;
+  if (q.isPending)
+    return (
+      <>
+        {navigation}
+        <Loading />
+      </>
+    );
+  if (q.error)
+    return (
+      <>
+        {navigation}
+        <ErrorState error={q.error} />
+      </>
+    );
   const a = q.data;
   if (!a.submitted_at) return null;
+  if (review) {
+    const parts = [...new Set(a.questions.map(q=>q.part))].sort((a,b)=>a-b);
+    const part = parts.includes(reviewPart) ? reviewPart : parts[0];
+    const questions = a.questions.filter(q=>q.part===part);
+    const reviewPdfPages = a.document_pages.filter((pageNumber) => {
+    if (parts.length === 1) return true;
+    const onPage = a.questions.filter(
+      (q) => (q.context.pdf_field as PdfField | undefined)?.page === pageNumber,
+    );
+    if (onPage.length) return onPage.some((q) => q.part === part);
+    // Retain approved context-only pages with the preceding section (or next
+    // section for an introductory page); never fetch an unapproved page.
+    const located = a.questions
+      .filter((q) => q.context.pdf_field)
+      .map((q) => ({
+        part: q.part,
+        page: (q.context.pdf_field as PdfField).page,
+      }))
+      .sort((a, b) => a.page - b.page);
+    const owner =
+      located.filter((q) => q.page < pageNumber).at(-1) ||
+      located.find((q) => q.page > pageNumber);
+    return !owner || owner.part === part;
+  });
+    return <ReviewAnswers results={a.results || []}><div className="mock-review-workspace">
+      {navigation}
+      <div className="mock-review-heading"><div><span className="eyebrow">LISTENING / REVIEW</span><h1>{a.title}</h1><p>Read-only review · {a.score} / {a.total}</p></div><Link className="button secondary" to={`?${page>1?`history_page=${page}&`:""}`}>Back to result</Link></div>
+      {a.review_audio_url && <section className="panel review-recording" aria-label="Review recording"><AudioPlayer url={a.review_audio_url} /></section>}
+      <nav className="exam-part-tabs" aria-label="Review parts">{parts.map(n=><button key={n} className={n===part?"active":""} onClick={()=>setReviewPart(n)}>Part {n}</button>)}</nav>
+      <HighlightTools key={`review-${a.id}-${part}`} selector=".mock-review-paper" storageKey={`listening-${a.id}-${part}`} />
+      <div className="mock-review-grid"><section className="panel exam-questions mock-review-paper">
+        <div className="workspace-heading"><div><h2>Part {part}</h2><p className="muted">Listen and answer questions {questions[0]?.number}–{questions.at(-1)?.number}.</p></div><span className="pill">{a.timing==="untimed"?"Untimed":"Timed"}</span></div>
+        {a.presentation==="html" ? <HtmlQuestionPaper sections={(a.sections||[]).filter(s=>s.part===part)} questions={questions} answers={a.answers} disabled onAnswer={()=>{}} /> : a.presentation==="pdf" ? <div className="exam-original-paper"><div className="pdf-pages-toolbar"><span>{reviewPdfPages.length} question{ " " }{reviewPdfPages.length===1?"page":"pages"} · Part {part}</span><div role="group" aria-label="PDF page layout"><button className={reviewLayout==="stacked"?"active":""} aria-pressed={reviewLayout==="stacked"} onClick={()=>setReviewLayout("stacked")}>Stacked</button><button className={reviewLayout==="columns"?"active":""} aria-pressed={reviewLayout==="columns"} onClick={()=>setReviewLayout("columns")}>Side by side</button></div></div><div className={`pdf-page-stack ${reviewLayout==="columns"?"two-columns":""}`}><Suspense fallback={<Loading />}>{reviewPdfPages.map(number=><PdfQuestionPage key={number} path={`mock-attempts/${a.id}/pdf-pages/${number}/`} pageNumber={number} questions={questions} answers={a.answers} disabled onAnswer={()=>{}} />)}</Suspense></div></div> : <QuestionPaper questions={questions} answers={a.answers} disabled flags={[]} onAnswer={()=>{}} />}
+      </section></div>
+    </div></ReviewAnswers>;
+  }
+
   return (
     <>
+      {navigation}
       <PageTitle
         eyebrow="LISTENING / MOCK RESULTS"
         title="A clearer picture of your listening"
@@ -1017,35 +1092,8 @@ export function MockResults() {
             </p>
           </div>
         </div>
-        <div className="exam-result-list">
-          {a.results?.map((r) => {
-            const question = a.questions.find((q) => q.number === r.number);
-            return (
-              <div
-                className={`exam-result-row ${r.correct ? "correct" : "incorrect"}`}
-                key={r.number}
-              >
-                <span>{r.number}</span>
-                <div>
-                  <h3>{question?.prompt}</h3>
-                  <p>
-                    Your answer:{" "}
-                    {Array.isArray(r.answer)
-                      ? r.answer.join(", ")
-                      : r.answer || "No answer"}
-                  </p>
-                  <small>
-                    Accepted:{" "}
-                    {r.accepted_answers
-                      .map((v) => (Array.isArray(v) ? v.join(" + ") : v))
-                      .join(" / ")}
-                  </small>
-                </div>
-                <strong>{r.correct ? "Correct" : "Review"}</strong>
-              </div>
-            );
-          })}
-        </div>
+        <div className="editor-actions"><Link className="button primary" to={`?review=1${page>1?`&history_page=${page}`:""}`}>Review Mock</Link><MockShareLink attemptId={a.id} /></div>
+        <ResultDetails label="Part" results={(a.results || []).map(r=>({...r,group:a.questions.find(q=>q.number===r.number)?.part || 1,prompt:a.questions.find(q=>q.number===r.number)?.prompt}))} />
         <div className="editor-actions">
           <Link
             className="button primary"

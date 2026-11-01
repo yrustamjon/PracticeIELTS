@@ -169,6 +169,8 @@ def test_material_exposes_only_published_part_question_counts(exam_data):
     first = choice(number=1)
     third = {**choice(number=2), "part": 3}
     publish(exam_data, [first, third])
+    teacher.is_superuser = True
+    teacher.save(update_fields=["is_superuser"])
     draft = {**choice(number=1), "part": 2}
     assert (
         client.put(
@@ -229,6 +231,9 @@ def test_active_exam_blocks_all_study_routes_and_cross_user_access(exam_data):
     client, teacher, student, other, editor, m, v = exam_data
     publish(exam_data)
     client.force_authenticate(student)
+    before_exam = client.get(f"/api/v1/audio/{v.audio_id}/stream/")
+    etag = before_exam["ETag"]
+    b"".join(before_exam.streaming_content)
     s = client.post(
         "/api/v1/sessions/", {"material": m.pk, "difficulty": "easy"}, format="json"
     ).data
@@ -237,7 +242,11 @@ def test_active_exam_blocks_all_study_routes_and_cross_user_access(exam_data):
     )
     a = start(exam_data, "timed")
     assert client.get(f"/api/v1/materials/{m.pk}/").status_code == 403
+    assert client.post(f"/api/v1/audio/{v.audio_id}/playback/").status_code == 403
     assert client.get(f"/api/v1/audio/{v.audio_id}/stream/").status_code == 403
+    assert client.get(
+        f"/api/v1/audio/{v.audio_id}/stream/", HTTP_IF_NONE_MATCH=etag
+    ).status_code == 403
     assert (
         client.get(f"/api/v1/sessions/{s['id']}/hint/?reveal=true").status_code == 403
     )
@@ -320,6 +329,7 @@ def test_audio_delivery_is_owned_and_single_use(exam_data):
     ticket = client.post(path + "start-audio/").data
     assert client.post(path + "start-audio/").status_code == 403
     response = client.get(ticket["url"], HTTP_X_EXAM_AUDIO=ticket["ticket"])
+    assert response["Cache-Control"] == "private, no-store"
     assert response.status_code == 200 and b"".join(
         response.streaming_content
     ).startswith(b"RIFF")
@@ -701,9 +711,15 @@ def test_pdf_inline_numbered_blanks_have_real_coordinates_and_keep_private_pages
         parsed = __import__("pypdf").PdfReader(io.BytesIO(r.content))
         assert len(parsed.pages) == 1 and phrase in parsed.pages[0].extract_text()
         assert "Private answer key" not in str([p.extract_text() for p in parsed.pages])
-    assert client.get(path + "3/").status_code == 403
+        etag = r["ETag"]
+        from unittest.mock import patch
+        with patch("exams.pdf_layout.PdfReader", side_effect=AssertionError("PDF parsed again")):
+            assert client.get(path + f"{page}/", HTTP_IF_NONE_MATCH=etag).status_code == 304
+            warm = client.get(path + f"{page}/")
+            assert warm.status_code == 200 and warm.content == r.content
+    assert client.get(path + "3/", HTTP_IF_NONE_MATCH=etag).status_code == 403
     client.force_authenticate(other)
-    assert client.get(path + "1/").status_code == 404
+    assert client.get(path + "1/", HTTP_IF_NONE_MATCH=etag).status_code == 404
     client.force_authenticate(editor)
     assert (
         client.get(f"/api/v1/question-documents/{document}/pdf-pages/1/").status_code
@@ -820,3 +836,155 @@ def test_html_paper_markers_and_import_permissions(exam_data):
         {"file": SimpleUploadedFile("paper.html", NATIVE_PAPER.encode())},
         format="multipart",
     ).status_code in (403, 404)
+
+
+def test_native_exam_cookie_is_scoped_and_single_delivery(exam_data):
+    from rest_framework_simplejwt.tokens import AccessToken
+    publish(exam_data)
+    attempt = start(exam_data, "timed")
+    client = exam_data[0]
+    path = f"/api/v1/mock-attempts/{attempt['id']}/"
+    grant = client.post(path + "start-audio/")
+    cookie = grant.cookies['exam_audio']
+    assert cookie['httponly'] and cookie['samesite'] == 'Strict'
+    assert cookie['path'] == path + 'audio/'
+    client.force_authenticate(user=None)
+    client.cookies['exam_audio'] = cookie.value
+    response = client.get(grant.data['url'])
+    assert response.status_code == 200
+    assert response['Cache-Control'] == 'private, no-store'
+    assert b''.join(response.streaming_content).startswith(b'RIFF')
+    assert client.get(grant.data['url']).status_code == 403
+    assert client.get(path).status_code == 401
+    client.credentials(HTTP_AUTHORIZATION='Bearer ' + str(AccessToken.for_user(exam_data[2])))
+    assert client.post(path + 'start-audio/').status_code == 403
+
+
+def test_native_exam_cookie_rejects_changed_password_and_tampering(exam_data):
+    publish(exam_data)
+    attempt = start(exam_data)
+    client = exam_data[0]
+    grant = client.post(f"/api/v1/mock-attempts/{attempt['id']}/start-audio/")
+    cookie = grant.cookies['exam_audio'].value
+    client.force_authenticate(user=None)
+    client.cookies['exam_audio'] = cookie + 'tampered'
+    assert client.get(grant.data['url']).status_code == 401
+    client.cookies['exam_audio'] = cookie
+    user = exam_data[2]
+    user.set_password('changed-password')
+    user.save()
+    assert client.get(grant.data['url']).status_code == 401
+
+
+def test_native_untimed_ranges_and_expired_ticket(exam_data):
+    publish(exam_data)
+    attempt = start(exam_data)
+    client = exam_data[0]
+    grant = client.post(f"/api/v1/mock-attempts/{attempt['id']}/start-audio/")
+    cookie = grant.cookies['exam_audio'].value
+    client.force_authenticate(user=None)
+    client.cookies['exam_audio'] = cookie
+    for header in ['bytes=0-31', 'bytes=-32']:
+        response = client.get(grant.data['url'], HTTP_RANGE=header)
+        assert response.status_code == 206
+        assert len(b''.join(response.streaming_content)) == 32
+        assert response['Accept-Ranges'] == 'bytes'
+    assert client.get(grant.data['url'], HTTP_RANGE='bytes=99999999-').status_code == 416
+    MockAttempt.objects.filter(pk=attempt['id']).update(audio_ticket_expires=timezone.now()-timedelta(seconds=1))
+    assert client.get(grant.data['url']).status_code == 403
+
+
+@pytest.mark.parametrize('scope', ['part', 'full'])
+def test_public_result_link_ownership_snapshot_and_revocation(exam_data, scope):
+    import uuid
+    from exams.models import SharedMockResult
+    from learning.models import ListeningTest, TestPart
+
+    client, teacher, student, other, _, material, _ = exam_data
+    book = Category.objects.create(name='Original book')
+    material.category.parent = book
+    material.category.save()
+    test = ListeningTest.objects.create(title='Test 1', category=material.category, owner=teacher)
+    if scope == 'part':
+        TestPart.objects.create(test=test, number=2, material=material)
+    else:
+        test.full_material = material
+        test.save()
+    first = 11 if scope == 'part' else 1
+    publish(exam_data, [choice(number=first), choice(number=first + 1)])
+    attempt = start(exam_data)
+    path = f"/api/v1/mock-attempts/{attempt['id']}/share/"
+    assert client.post(path).status_code == 400
+    client.patch(f"/api/v1/mock-attempts/{attempt['id']}/", {'answers': {str(first): 'station', str(first + 1): 'park'}}, format='json')
+    response = client.post(f"/api/v1/mock-attempts/{attempt['id']}/submit/")
+    assert response.status_code == 200
+    assert client.get(path).data == {'token': None}
+    client.force_authenticate(other)
+    for method in (client.get, client.post, client.delete):
+        assert method(path).status_code == 404
+    client.force_authenticate(student)
+    token = client.post(path).data['token']
+    assert client.post(path).data['token'] == token
+    assert SharedMockResult.objects.count() == 1
+    public = APIClient()
+    url = f'/api/v1/shared-results/{token}/'
+    response = public.get(url)
+    assert response.status_code == 200
+    data = response.data
+    assert data['category_path'] == ['Original book', 'Original exam fixtures']
+    assert data['test_title'] == 'Test 1'
+    assert data['part_label'] == ('Part 2' if scope == 'part' else 'Full test')
+    assert data['score'] == 1
+    assert [r['correct'] for r in data['results']] == [True, False]
+    assert data['results'][1]['answer'] == 'park'
+    assert data['results'][1]['accepted_answers'] == ['station']
+    assert not {'id', 'user', 'material', 'document_pages', 'sections', 'audio', 'email'} & data.keys()
+    assert response['Cache-Control'] == 'no-store'
+    assert 'noindex' in response['X-Robots-Tag']
+    assert public.post(url).status_code == 405
+    assert public.get(f'/api/v1/shared-results/{uuid.uuid4()}/').status_code == 404
+    material.title = 'Changed later'
+    material.save()
+    assert public.get(url).data == data
+    assert client.delete(path).status_code == 204
+    assert public.get(url).status_code == 404
+    new_token = client.post(path).data['token']
+    assert new_token != token
+    client.force_authenticate(None)
+    assert client.post(path).status_code in (401, 403)
+
+
+def test_mock_history_paginated_owned_summaries(exam_data):
+    client, _, student, other, _, material, version = exam_data
+    question_set = publish(exam_data)
+    attempt = start(exam_data)
+    assert client.get('/api/v1/mock-attempts/history/').data['count'] == 0
+    submitted = client.post(f"/api/v1/mock-attempts/{attempt['id']}/submit/")
+    assert submitted.status_code == 200
+    now = timezone.now()
+    MockAttempt.objects.bulk_create([
+        MockAttempt(user=student, material=material, version=version,
+                    question_set=question_set, timing='untimed', submitted_at=now + timedelta(seconds=i), score=1, total=1)
+        for i in range(55)
+    ])
+    MockAttempt.objects.create(user=other, material=material, version=version,
+                              question_set=question_set, timing='untimed', submitted_at=now, score=0, total=1)
+    response = client.get('/api/v1/mock-attempts/history/')
+    assert response.status_code == 200
+    assert response.data['count'] == 56
+    assert len(response.data['results']) == 10
+    row = response.data['results'][0]
+    assert set(row) == {'id', 'title', 'category_name', 'timing', 'submitted_at', 'score', 'total'}
+    assert row['title'] == material.title
+    assert row['score'] == 1
+    assert row['category_name'] == material.category.name
+    page6 = client.get('/api/v1/mock-attempts/history/?page=6')
+    assert len(page6.data['results']) == 6
+    assert page6.data['results'][-1]['id'] == attempt['id']
+    client.force_authenticate(other)
+    assert client.get('/api/v1/mock-attempts/history/').data['count'] == 1
+    client.force_authenticate(student)
+    start(exam_data, timing='timed')
+    assert client.get('/api/v1/mock-attempts/history/').data['count'] == 0
+    client.force_authenticate(None)
+    assert client.get('/api/v1/mock-attempts/history/').status_code in (401, 403)

@@ -1,4 +1,4 @@
-"""Administrator corrections of Easy playback windows with pinned history."""
+"""Administrator corrections of difficulty-scoped playback windows with pinned history."""
 
 from django.db import transaction
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
@@ -17,14 +17,14 @@ def can_edit_timing(session):
     return (
         user.is_active
         and (user.is_staff or user.role == "admin")
-        and session.difficulty == "easy"
+        and session.difficulty in ("easy", "medium", "hard")
         and session.version_id == session.material.published_version_id
     )
 
 
-def latest_timing_revision(version_id, grouping_version):
+def latest_timing_revision(version_id, grouping_version, difficulty="easy"):
     return PracticeTimingRevision.objects.filter(
-        version_id=version_id, grouping_version=grouping_version
+        version_id=version_id, grouping_version=grouping_version, difficulty=difficulty
     ).first()
 
 
@@ -32,9 +32,11 @@ def latest_timing_revision(version_id, grouping_version):
 def save_timing(session, actor, data):
     if not actor.is_active or not (actor.is_staff or actor.role == "admin"):
         raise PermissionDenied("Only administrators can correct Practice timing.")
-    if session.difficulty != "easy":
+    if session.difficulty not in ("easy", "medium", "hard"):
         raise ValidationError(
-            {"detail": "Timing corrections are available only in Easy mode."}
+            {
+                "detail": "Timing corrections are available in Easy, Medium and Hard modes."
+            }
         )
     material = Material.objects.select_for_update().get(pk=session.material_id)
     session = (
@@ -44,16 +46,18 @@ def save_timing(session, actor, data):
     )
     if material.published_version_id != session.version_id:
         raise TimingConflict(
-            "A newer transcript is published. Reopen the latest Easy Practice from the material."
+            "A newer transcript is published. Reopen the latest Practice from the material."
         )
-    latest = latest_timing_revision(session.version_id, session.grouping_version)
+    latest = latest_timing_revision(
+        session.version_id, session.grouping_version, session.difficulty
+    )
     latest_id = latest.pk if latest else None
     if (
         data["revision"] != session.timing_revision_id
         or latest_id != session.timing_revision_id
     ):
         raise TimingConflict(
-            "Timing has changed. Reopen the latest Easy Practice from the material before saving."
+            "Timing has changed. Reopen the latest Practice from the material before saving."
         )
     intervals = groups(session)
     position, start, end = data["position"], data["start_ms"], data["end_ms"]
@@ -85,6 +89,7 @@ def save_timing(session, actor, data):
     revision = PracticeTimingRevision.objects.create(
         version=session.version,
         grouping_version=session.grouping_version,
+        difficulty=session.difficulty,
         overrides=overrides,
         created_by=actor,
     )

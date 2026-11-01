@@ -404,7 +404,9 @@ export function MaterialDetail() {
             </button>
           </div>
           {mode === "mock" ? (
-            <MockSelection materialId={m.id} available={!!m.mock_available} />
+            <MockSelection materialId={m.id} available={!!m.mock_available} audioAvailable={!!m.audio} />
+          ) : m.practice_available === false ? (
+            <p className="notice-box">Audio and a reviewed transcript have not been added yet. Open the question-only Mock to work with this paper.</p>
           ) : mode === "transcript" ? (
             <>
               <p>

@@ -1,7 +1,7 @@
+import "./dashboard.css";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
-  ArrowRight,
   ChevronRight,
   Headphones,
   FileText,
@@ -10,18 +10,10 @@ import {
   Clock,
   AudioLines,
   NotebookPen,
-  FolderOpen,
 } from "lucide-react";
-import { api, type Progress, type Category } from "../services/api";
+import { api, type Progress } from "../services/api";
 import { useAuth } from "../stores/auth";
-import {
-  Loading,
-  ErrorState,
-  PageTitle,
-  SectionTitle,
-  Waveform,
-  BookCover,
-} from "../components/ui";
+import { Loading, ErrorState, PageTitle, SectionTitle } from "../components/ui";
 export function Activity({ data }: { data: Progress }) {
   const max = Math.max(...data.weekly_activity.map((x) => x.count), 1);
   return (
@@ -57,13 +49,8 @@ export function Dashboard() {
     queryKey: ["progress"],
     queryFn: () => api<Progress>("progress/"),
   });
-  const categories = useQuery({
-    queryKey: ["categories"],
-    queryFn: () => api<{ results: Category[] }>("categories/"),
-  });
-  if (progress.isPending || categories.isPending) return <Loading />;
-  if (progress.error || categories.error)
-    return <ErrorState error={progress.error || categories.error} />;
+  if (progress.isPending) return <Loading />;
+  if (progress.error) return <ErrorState error={progress.error} />;
   const data = progress.data!,
     resume = data.resume;
   const ratio = resume
@@ -73,10 +60,10 @@ export function Dashboard() {
   const greeting =
     hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   return (
-    <>
+    <div className="learner-dashboard">
       <PageTitle
         title={`${greeting}, ${user.username}`}
-        description="Keep building your listening skills."
+        description="Choose your next Listening or Reading task."
         action={
           <span className="date-label">
             {new Date().toLocaleDateString("en-US", {
@@ -87,69 +74,61 @@ export function Dashboard() {
           </span>
         }
       />
-      <div className="dashboard-intro">
-        <span>
-          <Headphones size={18} />
-          <strong>Listening workspace</strong>
-        </span>
-        <p>Choose a material, then practise your way.</p>
-        {user.can_edit && (
-          <Link className="text-link" to="/admin">
-            Manage materials
-            <ChevronRight size={16} />
-          </Link>
-        )}
-      </div>
       <div className="dashboard-top">
         <section className="panel continue-card">
           <SectionTitle
-            title={
-              resume
-                ? "Continue where you left off"
-                : "Your next chapter starts here"
-            }
-            to="/dictation"
-            label="View all"
+            title={resume ? "Continue where you left off" : "Start practising"}
+            to="/library"
+            label="Library"
           />
           <div className="continue-body">
-            <BookCover />
             <div className="continue-details">
-              <span className="muted small-label">Listening Practice</span>
+              <span className="muted small-label">
+                {resume ? "Listening Practice" : "LISTENING & READING"}
+              </span>
               <h3>
-                {resume ? resume.title : "Build a stronger listening habit"}
+                {resume ? resume.title : "Choose a book. Make your next step."}
               </h3>
-              <div className="metadata">
-                <span>
-                  <FileText size={16} />
-                  {resume
-                    ? `Segment ${resume.position + 1} of ${resume.groups.length}`
-                    : "Sentence by sentence"}
-                </span>
-                <span>
-                  <Clock size={16} />
-                  {resume
-                    ? `${Math.ceil(resume.audio.duration_ms / 60000)} minutes`
-                    : "At your own pace"}
-                </span>
-                <span>
-                  <AudioLines size={16} />
-                  {resume ? resume.difficulty : "Every level"}
-                </span>
-              </div>
-              <div className="progress-caption">
-                {resume
-                  ? `${ratio}% complete`
-                  : "A little listening, every day."}
-              </div>
-              <div className="progress-track">
-                <i style={{ width: `${ratio}%` }} />
-              </div>
+              {resume && (
+                <>
+                  <div className="metadata">
+                    <span>
+                      <FileText size={16} />
+                      {`Segment ${resume.position + 1} of ${resume.groups.length}`}
+                    </span>
+                    <span>
+                      <Clock size={16} />
+                      {resume
+                        ? `${Math.ceil(resume.audio.duration_ms / 60000)} minutes`
+                        : "At your own pace"}
+                    </span>
+                    <span>
+                      <AudioLines size={16} />
+                      {resume ? resume.difficulty : "Every level"}
+                    </span>
+                  </div>
+                  <div className="progress-caption">
+                    {resume
+                      ? `${ratio}% complete`
+                      : "A little listening, every day."}
+                  </div>
+                  <div className="progress-track">
+                    <i style={{ width: `${ratio}%` }} />
+                  </div>
+                </>
+              )}
+              {!resume && (
+                <p className="muted">
+                  Open the Library to choose Listening audio or Reading
+                  passages. Your answers are saved as you practise.
+                </p>
+              )}
               <div className="continue-actions">
                 <Link
                   className="button primary"
                   to={resume ? `/practice/${resume.id}` : "/library"}
                 >
-                  {resume ? "Continue Practice" : "Find your first practice"}
+                  {resume ? "Continue Practice" : "Browse Library"}
                   <ChevronRight size={20} />
                 </Link>
                 <Link className="text-link" to="/mistakes">
@@ -158,11 +137,10 @@ export function Dashboard() {
                 </Link>
               </div>
             </div>
-            <Waveform />
           </div>
         </section>
         <section className="panel progress-card">
-          <SectionTitle title="Your progress" />
+          <SectionTitle title="Listening progress" />
           <div className="chart-caption">
             <span>7-day activity</span>
             <span className="small-label">This week</span>
@@ -175,7 +153,7 @@ export function Dashboard() {
                 <strong>
                   {data.accuracy === null ? "—" : `${data.accuracy}%`}
                 </strong>
-                <small>Accuracy rate</small>
+                <small>Accuracy</small>
               </span>
             </div>
             <div>
@@ -189,14 +167,14 @@ export function Dashboard() {
         </section>
       </div>
       <SectionTitle
-        title="Choose your practice"
+        title="What would you like to practise?"
         to="/library"
-        label="Explore all practice types"
+        label="Open Library"
       />
       <div className="practice-grid">
         <PracticeCard
           icon={<Headphones />}
-          title="Dictation Practice"
+          title="Listening practice"
           text="Listen and write what you hear. Improve your accuracy and spelling."
           link="Start Dictation"
           to="/dictation"
@@ -204,83 +182,22 @@ export function Dashboard() {
         />
         <PracticeCard
           icon={<FileText />}
-          title="Mock Test"
+          title="Listening mocks"
           text="Answer interactive exam questions. Choose a timed test or take your time."
           link="Choose a Mock Test"
           to="/mock-tests"
-          color="orange"
+          color="teal"
         />
         <PracticeCard
           icon={<BookOpen />}
-          title="Transcript Study"
-          text="Read, listen and analyse transcripts to learn from the content."
-          link="Open Transcript Library"
-          to="/library?mode=transcript"
-          color="purple"
+          title="Reading"
+          text="Choose a book and test. Read a passage, answer questions and review your mistakes."
+          link="Choose a Reading test"
+          to="/reading"
+          color="teal"
         />
       </div>
-      <SectionTitle
-        title="Browse Library"
-        to="/library"
-        label="View all materials"
-      />
-      {categories.data!.results.length ? (
-        <div className="library-grid">
-          {categories
-            .data!.results.filter((c) => !c.parent)
-            .map((c, i) => (
-              <Link
-                key={c.id}
-                to={`/library?category=${c.id}`}
-                className="panel library-category"
-              >
-                <div className={`category-art art-${i % 3}`}>
-                  <BookOpen size={43} />
-                </div>
-                <div>
-                  <h3>{c.name}</h3>
-                  <p>
-                    {c.description ||
-                      "Discover listening materials in this collection."}
-                  </p>
-                  <span>{c.material_count} materials</span>
-                </div>
-                <ChevronRight size={18} />
-              </Link>
-            ))}
-        </div>
-      ) : (
-        <div className="panel library-welcome">
-          <span className="icon-orbit">
-            <FolderOpen size={29} />
-          </span>
-          <div>
-            <h3>Your listening library is growing</h3>
-            <p>
-              {user.can_edit
-                ? "Add your first collection and publish original or licensed listening material."
-                : "Published listening collections will appear here. Your progress starts with your first practice."}
-            </p>
-          </div>
-          <Link
-            to={user.can_edit ? "/admin" : "/library"}
-            className="text-link"
-          >
-            {user.can_edit ? "Add a collection" : "Explore library"}
-            <ArrowRight size={17} />
-          </Link>
-        </div>
-      )}
-      <div className="daily-note">
-        <span>
-          <Headphones size={17} /> MAKE IT A HABIT
-        </span>
-        <p>
-          Progress comes from showing up. Give your listening a little time
-          today.
-        </p>
-      </div>
-    </>
+    </div>
   );
 }
 function PracticeCard({

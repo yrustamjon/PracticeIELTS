@@ -339,3 +339,192 @@ def build_full_test(test_id):
         ListeningTest.objects.filter(pk=test_id).update(
             assembly_state="failed", assembly_error=message, updated_at=timezone.now()
         )
+
+
+def combine_mock_audio(parts, full, files):
+    """A real Full recording from the four pinned Mock recordings; no ASR needed."""
+    if not all(p.material.published_questions.audio_id for p in parts):
+        return None
+    with tempfile.TemporaryDirectory(prefix="practiceielts-mock-full-") as directory:
+        directory = Path(directory)
+        sources = []
+        formats = []
+        for part in parts:
+            asset = part.material.published_questions.audio
+            path = directory / f"part-{part.number}{Path(asset.file.name).suffix}"
+            with asset.file.open("rb") as src, path.open("wb") as dest:
+                shutil.copyfileobj(src, dest)
+            sources.append(path)
+            probe = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "a:0",
+                    "-show_entries",
+                    "stream=codec_name,sample_rate,channels",
+                    "-of",
+                    "json",
+                    str(path),
+                ],
+                capture_output=True,
+                check=True,
+                timeout=20,
+            )
+            stream = __import__("json").loads(probe.stdout)["streams"][0]
+            formats.append(
+                (stream["codec_name"], stream["sample_rate"], stream["channels"])
+            )
+        listing = directory / "parts.txt"
+        listing.write_text("".join(f"file '{p.name}'\n" for p in sources))
+        copy_audio = len(set(formats)) == 1 and formats[0][0] in ("mp3", "aac")
+        extension = ".m4a" if copy_audio and formats[0][0] == "aac" else ".mp3"
+        output = directory / ("full" + extension)
+        codec_args = (
+            ["-c:a", "copy"] if copy_audio else ["-c:a", "libmp3lame", "-b:a", "128k"]
+        )
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-nostdin",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(listing),
+                "-map",
+                "0:a:0",
+                "-vn",
+                *codec_args,
+                *(["-movflags", "+faststart"] if extension == ".m4a" else []),
+                str(output),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=1800,
+        )
+        from .services.audio import inspect_audio
+
+        with output.open("rb") as source:
+            upload = File(source, name=output.name)
+            duration, mime = inspect_audio(upload)
+            expected = sum(
+                p.material.published_questions.audio.duration_ms for p in parts
+            )
+            if abs(duration - expected) > max(3000, expected * 0.01):
+                raise ValidationError(
+                    "The assembled recording length does not match the four source Parts."
+                )
+            asset = AudioAsset(
+                material=full, duration_ms=duration, mime_type=mime, size=upload.size
+            )
+            asset.file.save(output.name, upload, save=False)
+            files.append(asset.file)
+        return asset
+
+
+def publish_question_only_full(test_id, user, confirmed=False, include_audio=True):
+    """Prepare recordings outside the write transaction, then publish a checked snapshot."""
+    from rest_framework.exceptions import PermissionDenied
+
+    from exams.services import publish_question_set
+
+    test = ListeningTest.objects.select_related("full_material").get(pk=test_id)
+    if not user.can_edit or not (
+        user.is_staff or user.role == "admin" or test.owner_id == user.pk
+    ):
+        raise PermissionDenied("Only authorized editors can publish Full questions.")
+    if not confirmed:
+        raise ValidationError(
+            "Explicitly confirm review of all four Part papers and keys."
+        )
+    parts = list(
+        test.parts.select_related("material__published_questions__audio").order_by(
+            "number"
+        )
+    )
+    if [p.number for p in parts] != [1, 2, 3, 4] or any(
+        not p.material.published_questions_id for p in parts
+    ):
+        raise ValidationError("Publish reviewed questions for all four Parts first.")
+    if any(not p.material.rights_confirmed for p in parts):
+        raise ValidationError("Confirm permission for every Part first.")
+    signature = snapshot(test)
+    has_audio = include_audio and all(
+        p.material.published_questions.audio_id for p in parts
+    )
+    full = test.full_material
+    if full:
+        if full.published_version_id:
+            raise ValidationError(
+                "This Full test has a published recording. Use the existing audio assembly workflow."
+            )
+        if (
+            not include_audio
+            and full.published_questions_id
+            and full.published_questions.audio_id
+        ):
+            return full
+        if (
+            test.assembly_signature == signature
+            and full.published_questions_id
+            and bool(full.published_questions.audio_id) == has_audio
+        ):
+            return full
+    else:
+        with transaction.atomic():
+            # Acquire the writer before reading on SQLite; PostgreSQL locks the test row.
+            ListeningTest.objects.filter(pk=test_id).update(updated_at=timezone.now())
+            test = ListeningTest.objects.select_for_update().get(pk=test_id)
+            full = test.full_material
+            if not full:
+                full = Material.objects.create(
+                    title=test.title + " · Full test",
+                    category=test.category,
+                    owner=test.owner,
+                    source=f"Reviewed Parts 1–4 · {test.category.name} · {test.title}",
+                    license="Permissions recorded on each component Part",
+                    rights_confirmed=True,
+                )
+                test.full_material = full
+                test.save(update_fields=["full_material", "updated_at"])
+    files = []
+    try:
+        audio = combine_mock_audio(parts, full, files) if has_audio else None
+        with transaction.atomic():
+            ListeningTest.objects.filter(pk=test_id).update(updated_at=timezone.now())
+            test = ListeningTest.objects.select_for_update().get(pk=test_id)
+            if snapshot(test) != signature or test.full_material_id != full.pk:
+                raise ValidationError(
+                    "Part publications changed during assembly. Retry the current versions."
+                )
+            full.refresh_from_db()
+            if full.published_version_id:
+                raise ValidationError(
+                    "A Full transcript was published during assembly. Use the recording assembly workflow."
+                )
+            if audio:
+                audio.save()
+            merge_questions(test, parts, full, audio, files)
+            publish_question_set(full, user, True)
+            test.assembly_state = "ready" if audio else "waiting"
+            test.assembly_signature = signature
+            test.assembly_error = ""
+            test.save(
+                update_fields=[
+                    "assembly_state",
+                    "assembly_signature",
+                    "assembly_error",
+                    "updated_at",
+                ]
+            )
+            return full
+    except Exception:
+        for file in files:
+            file.delete(save=False)
+        raise

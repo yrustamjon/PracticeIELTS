@@ -1,0 +1,10 @@
+.result-navigation { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-bottom: 22px; }
+.result-breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; font-size: 12px; line-height: 1.6; color: #75899b; }
+.result-breadcrumbs > svg { flex-shrink: 0; }
+.result-breadcrumbs a { color: #567487; text-decoration: none; }
+.result-breadcrumbs a:hover { color: #008a99; text-decoration: underline; }
+.result-breadcrumbs [aria-current="page"] { color: #193c53; font-weight: 600; overflow-wrap: anywhere; }
+.result-back { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 7px 10px; border: 1px solid #dfe8ee; background: #fff; border-radius: 7px; color: #45697e; font-size: 12px; font-weight: 600; text-decoration: none; }
+.result-back:hover { background: #f0f8f9; border-color: #b8dade; }
+.result-navigation a:focus-visible { outline: 2px solid #008e9f; outline-offset: 3px; }
+@media (max-width: 600px) { .result-navigation { align-items: flex-start; gap: 10px; margin-bottom: 18px; } .result-breadcrumbs { width: 100%; font-size: 11px; } }

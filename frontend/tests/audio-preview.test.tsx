@@ -12,6 +12,7 @@ beforeEach(() => {
       .mockResolvedValue({
         ok: true,
         status: 200,
+        headers: new Headers(),
         blob: async () => new Blob(["original audio fixture"]),
       }),
   );

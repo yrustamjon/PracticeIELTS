@@ -9,7 +9,9 @@ import {
   ChevronRight,
   Headphones,
   ArrowRight,
-  UserRound,
+  Mail,
+  ShieldCheck,
+  BookOpenCheck,
 } from "lucide-react";
 import {
   api,
@@ -18,6 +20,7 @@ import {
   type Material,
 } from "../services/api";
 import { useAuth } from "../stores/auth";
+import { useWorkspace } from "../stores/workspace";
 import {
   PageTitle,
   Empty,
@@ -25,6 +28,7 @@ import {
   ErrorState,
   SectionTitle,
 } from "../components/ui";
+import { AccountSettings, AdminAvatar } from "./AccountSettings";
 import { Activity } from "./Dashboard";
 import { ComparisonView } from "./Practice";
 import { AudioPlayer } from "../components/AudioPlayer";
@@ -213,28 +217,25 @@ export function Transcript() {
   );
 }
 export function Profile() {
+  const { admin } = useWorkspace();
   const user = useAuth((s) => s.user)!;
   return (
     <>
       <PageTitle
-        title="Your learning profile"
-        description="A space that belongs to you."
+        title={admin ? "Administrator profile" : "Your learning profile"}
+        description={admin ? "Manage your account and workspace settings." : "A space that belongs to you."}
       />
-      <section className="panel profile-card">
-        <span className="icon-orbit">
-          <UserRound size={35} />
-        </span>
-        <h2>{user.username}</h2>
-        <p>{user.email || "No email provided"}</p>
-        <span className="pill">{user.role}</span>
-        <p className="muted">
-          Your practice sessions and checked answers are saved to this account.
-        </p>
-        <Link to="/progress" className="button secondary">
-          View my progress
-          <ArrowRight size={17} />
-        </Link>
-      </section>
+      <div className="account-settings self-profile-workspace">
+        <section className="panel form-panel admin-profile-card" aria-labelledby="self-profile-name">
+          <div className="admin-profile-banner" aria-hidden="true" />
+          <div className="admin-profile-body">
+            <div className="admin-profile-identity"><AdminAvatar name={user.username} large /><div className="admin-profile-name"><span className="admin-eyebrow">MY ACCOUNT</span><h2 id="self-profile-name">{user.username}</h2><div className="admin-profile-badges"><span className="admin-role"><ShieldCheck size={14} aria-hidden="true" />{user.is_superuser ? "Super administrator" : user.role.charAt(0).toUpperCase()+user.role.slice(1)}</span><span className="admin-status is-active"><i aria-hidden="true" />Active</span></div></div></div>
+            <dl className="admin-profile-info"><div><dt><Mail size={15} aria-hidden="true" />Email address</dt><dd>{user.email || "No email provided"}</dd></div><div><dt><BookOpenCheck size={15} aria-hidden="true" />Workspace</dt><dd>{admin ? "Administration" : "Learning"}</dd></div></dl>
+          </div>
+        </section>
+        <Link to={admin ? "/admin/content" : "/progress"} className="panel self-workspace-link"><span className="self-security-icon"><BookOpenCheck size={22} aria-hidden="true" /></span><span><strong>{admin ? "Your content workspace" : "Your learning progress"}</strong><small>{admin ? "Manage books, tests and learning materials." : "Explore your saved practice and results."}</small></span><ArrowRight size={19} aria-hidden="true" /></Link>
+      </div>
+      <AccountSettings />
     </>
   );
 }
@@ -264,7 +265,7 @@ export function MockTests() {
 
 export function FutureModule() {
   const { module } = useParams();
-  const user = useAuth((s) => s.user);
+  const { admin } = useWorkspace();
   const title =
     (
       {
@@ -284,14 +285,14 @@ export function FutureModule() {
         <Empty
           title={`${title} is planned`}
           description={
-            user?.can_edit
+            admin
               ? "Content creation for this module is not available yet. Use Content Studio for Listening mock materials."
               : "This module is not open for practice or content uploads yet. Start with Listening."
           }
           action={
             <Link
               className="button primary"
-              to={user?.can_edit ? "/admin" : "/library"}
+              to={admin ? "/admin" : "/library"}
             >
               Open Listening
               <Headphones size={17} />

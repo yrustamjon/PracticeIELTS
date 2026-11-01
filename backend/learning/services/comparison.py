@@ -121,7 +121,7 @@ def compare(reference, answer, options=None):
 def groups(session):
     intervals = base_groups(session)
     revision = session.timing_revision
-    if session.difficulty == "easy" and revision is not None:
+    if revision is not None and revision.difficulty == session.difficulty:
         for position, timing in revision.overrides.items():
             intervals[int(position)].update(timing)
     return intervals

@@ -1,0 +1,50 @@
+.mock-history-page { max-width: 1120px; margin: 0 auto; }
+.mock-history-page .history-back { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 20px; color: #587187; font-size: 13px; font-weight: 600; }
+.mock-history-page .history-back:hover { color: #008a99; }
+.mock-history-page .page-title { margin-bottom: 28px; }
+.history-panel { background: #fff; border: 1px solid #dfe8ee; border-radius: 18px; overflow: hidden; box-shadow: 0 4px 20px #17395104; }
+.history-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 24px; border-bottom: 1px solid #e8eef2; }
+.history-panel-heading > div { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.history-panel-heading h2 { margin: 0; font-size: 16px; line-height: 1.4; }
+.history-heading-icon { color: #188999; display: flex; }
+.history-count { background: #f0f5f8; color: #587187; font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 6px; }
+.history-order { color: #8293a3; font-size: 12px; white-space: nowrap; }
+.mock-history-page .mock-history-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 106px 108px; align-items: center; gap: 18px; padding: 22px 24px; border-bottom: 1px solid #edf1f5; color: #19384e; text-decoration: none; transition: background .15s; }
+.mock-history-page .mock-history-row:last-child { border-bottom: 0; }
+.mock-history-page .mock-history-row:hover { background: #f7fbfc; }
+.mock-history-page .mock-history-row:focus-visible { outline: 2px solid #008e9f; outline-offset: -3px; }
+.history-record-icon { display: grid; place-items: center; width: 44px; height: 44px; background: #edf7f8; color: #0a8997; border-radius: 12px; }
+.mock-history-description { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.mock-history-description > strong { font-size: 15px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.history-book { color: #687f92; font-size: 11px; line-height: 1.4; }
+.history-record-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 3px; }
+.history-record-meta time { color: #7d8d9b; font-size: 11px; line-height: 1.5; }
+.history-mode { color: #637689; border: 1px solid #e1e9ef; padding: 2px 6px; border-radius: 5px; font-size: 10px; line-height: 1.5; }
+.mock-history-score { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 12px 8px; background: #f3f6f9; border-radius: 10px; }
+.mock-history-score strong { color: #203f55; font-size: 19px; line-height: 1.25; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
+.mock-history-score small { color: #728698; font-size: 10px; white-space: nowrap; }
+.mock-history-score.history-score-high { background: #eaf7f4; }
+.history-score-high strong, .history-score-high small { color: #137f72; }
+.history-open { display: flex; justify-content: flex-end; align-items: center; gap: 4px; color: #148799; font-size: 12px; font-weight: 600; }
+.mock-history-page .catalog-pagination { margin: 0; padding: 18px 24px; border-top: 1px solid #e8eef2; background: #fcfdfe; }
+.mock-history-page .catalog-pagination > span { font-size: 12px; }
+.mock-history-page .catalog-pagination .button { min-height: 36px; padding: 7px 12px; font-size: 12px; border-radius: 8px; }
+@media (max-width: 600px) {
+  .mock-history-page .history-back { margin-bottom: 16px; }
+  .mock-history-page .page-title { margin-bottom: 22px; }
+  .history-panel { border-radius: 14px; }
+  .history-panel-heading { padding: 17px 16px; }
+  .history-panel-heading > div { gap: 7px; }
+  .history-panel-heading h2 { font-size: 14px; }
+  .history-heading-icon, .history-order { display: none; }
+  .mock-history-page .mock-history-row { grid-template-columns: minmax(0, 1fr) 78px; gap: 12px; padding: 18px 16px; }
+  .history-record-icon, .history-open { display: none; }
+  .mock-history-description > strong { font-size: 13px; }
+  .mock-history-score { padding: 12px 6px; border-radius: 9px; }
+  .mock-history-score strong { font-size: 17px; }
+  .history-time { display: none; }
+  .history-record-meta { gap: 7px; }
+  .history-record-meta time { font-size: 10px; }
+  .mock-history-page .catalog-pagination { padding: 14px 16px; display: flex; flex-direction: row; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .mock-history-page .catalog-pagination > div { display: flex; flex-wrap: nowrap; gap: 5px; }
+}

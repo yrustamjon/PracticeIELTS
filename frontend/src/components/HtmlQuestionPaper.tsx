@@ -1,3 +1,4 @@
+import { ReviewFeedback } from "./ReviewFeedback";
 import { createElement, type ReactNode } from "react";
 import type { ExamQuestion, PaperSection } from "../services/api";
 
@@ -158,6 +159,7 @@ export function HtmlQuestionPaper({
         id={first ? `exam-question-${number}` : undefined}
       >
         {control}
+        {first && <ReviewFeedback number={number} />}
       </span>
     );
   }

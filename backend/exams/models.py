@@ -27,7 +27,7 @@ class QuestionSet(models.Model):
     material = models.ForeignKey(
         "learning.Material", on_delete=models.PROTECT, related_name="question_sets"
     )
-    audio = models.ForeignKey("learning.AudioAsset", on_delete=models.PROTECT)
+    audio = models.ForeignKey("learning.AudioAsset", null=True, blank=True, on_delete=models.PROTECT)
     document = models.ForeignKey(
         QuestionDocument, null=True, blank=True, on_delete=models.PROTECT
     )
@@ -112,7 +112,7 @@ class AnswerKey(models.Model):
 class MockAttempt(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     material = models.ForeignKey("learning.Material", on_delete=models.PROTECT)
-    version = models.ForeignKey("learning.TranscriptVersion", on_delete=models.PROTECT)
+    version = models.ForeignKey("learning.TranscriptVersion", null=True, blank=True, on_delete=models.PROTECT)
     question_set = models.ForeignKey(QuestionSet, on_delete=models.PROTECT)
     timing = models.CharField(
         max_length=8, choices=[("timed", "Timed"), ("untimed", "Untimed")]
@@ -146,3 +146,10 @@ class MockAttempt(models.Model):
                 name="one_active_mock_per_material",
             ),
         ]
+
+
+class SharedMockResult(models.Model):
+    attempt = models.OneToOneField(MockAttempt, on_delete=models.CASCADE, related_name="shared_result")
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    snapshot = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)

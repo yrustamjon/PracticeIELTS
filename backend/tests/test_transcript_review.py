@@ -97,6 +97,9 @@ def test_segment_50_error_explains_empty_row_and_never_mutates_publication(revie
 @pytest.mark.parametrize("include_ids", [True, False])
 def test_deleting_a_middle_row_preserves_all_other_word_anchors(review, include_ids):
     c, m, version, rows = review
+    m.owner.is_superuser = True
+    m.owner.save(update_fields=["is_superuser"])
+    c.force_authenticate(m.owner)
     rows.pop(10)
     if not include_ids:
         for s in rows:

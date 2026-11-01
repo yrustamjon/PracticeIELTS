@@ -8,7 +8,7 @@ import {
   FastForward,
 } from "lucide-react";
 import { useAuth } from "../stores/auth";
-import { restore } from "../services/api";
+import { post, restore } from "../services/api";
 export function AudioPlayer({
   url,
   start = 0,
@@ -30,15 +30,41 @@ export function AudioPlayer({
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState("1");
   const [volume, setVolume] = useState(1);
+  const [downloaded, setDownloaded] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [buffered, setBuffered] = useState(0);
+  const [waiting, setWaiting] = useState(false);
   const endTime = end === undefined ? duration : end / 1000;
   useEffect(() => {
     let active = true;
     let object = "";
     const abort = new AbortController();
+    let renew: ReturnType<typeof setTimeout> | undefined;
     setSource("");
     setError("");
+    setDownloaded(0);
+    setTotal(0);
+    setBuffered(0);
+    setWaiting(false);
     async function load() {
       try {
+        if (/^\/api\/v1\/audio\/\d+\/stream\/$/.test(url)) {
+          const authorize = async () => {
+            const grant = await post<{url: string; expires_in: number}>(
+              url.replace(/^\/api\/v1\//, "").replace(/stream\/$/, "playback/"), {},
+            );
+            if (!active) return;
+            setSource(grant.url);
+            renew = setTimeout(() => {
+              void authorize().catch(() => {
+                if (active) setError("Audio authorization expired. Retry audio.");
+              });
+            }, Math.max(1000, (grant.expires_in - 30) * 1000));
+          };
+          await authorize();
+          return;
+        }
         let r = await fetch(url, {
           headers: { Authorization: `Bearer ${useAuth.getState().token}` },
           signal: abort.signal,
@@ -51,7 +77,23 @@ export function AudioPlayer({
           });
         }
         if (!r.ok) throw new Error("Audio is unavailable. Please try again.");
-        const blob = await r.blob();
+        setTotal(Number(r.headers.get("Content-Length")) || 0);
+        let blob: Blob;
+        if (r.body) {
+          const reader = r.body.getReader();
+          const chunks: Uint8Array<ArrayBuffer>[] = [];
+          let received = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.byteLength;
+            if (active) setDownloaded(received);
+          }
+          blob = new Blob(chunks, {
+            type: r.headers.get("Content-Type") || "audio/mpeg",
+          });
+        } else blob = await r.blob();
         if (active) {
           object = URL.createObjectURL(blob);
           setSource(object);
@@ -65,9 +107,10 @@ export function AudioPlayer({
     return () => {
       active = false;
       abort.abort();
+      clearTimeout(renew);
       if (object) URL.revokeObjectURL(object);
     };
-  }, [url]);
+  }, [url, loadAttempt]);
   useEffect(() => {
     if (audio.current) {
       audio.current.pause();
@@ -145,9 +188,20 @@ export function AudioPlayer({
   return (
     <div className="audio-player">
       <audio
+        key={`${url}:${loadAttempt}`}
         ref={audio}
         src={source || undefined}
         preload="auto"
+        onProgress={() => {
+          const a = audio.current;
+          if (!a || !Number.isFinite(a.duration) || !a.duration) return;
+          let seconds = 0;
+          for (let i = 0; i < a.buffered.length; i++) seconds += a.buffered.end(i) - a.buffered.start(i);
+          setBuffered(Math.min(100, Math.round(seconds / a.duration * 100)));
+        }}
+        onWaiting={() => setWaiting(true)}
+        onCanPlay={() => setWaiting(false)}
+        onPlaying={() => setWaiting(false)}
         onLoadedMetadata={() => {
           if (audio.current) {
             setDuration(audio.current.duration);
@@ -156,11 +210,14 @@ export function AudioPlayer({
             audio.current.volume = volume;
           }
         }}
-        onPlay={() => setPlaying(true)}
+        onPlay={() => {
+          setError("");
+          setPlaying(true);
+        }}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         onError={() => {
-          if (source) setError("This browser could not decode the audio.");
+          if (source) setError("Audio could not load or play. Retry audio.");
         }}
         onTimeUpdate={() => {
           const a = audio.current!;
@@ -175,7 +232,15 @@ export function AudioPlayer({
       <div className="audio-top">
         <span className="eyebrow">LISTEN CLOSELY</span>
         <span className="small-label muted">
-          {source ? "Space to play · R to replay" : "Loading audio…"}
+          {source
+            ? waiting ? "Buffering audio…" : buffered > 0 && buffered < 100
+              ? `Buffered ${buffered}% · Ready to play`
+              : "Space to play · R to replay"
+            : error
+              ? "Audio unavailable"
+              : total > 0
+                ? `Loading audio… ${Math.min(100, Math.round((downloaded / total) * 100))}%`
+                : "Loading audio…"}
         </span>
       </div>
       <div className="audio-controls">
@@ -260,6 +325,10 @@ export function AudioPlayer({
       {error && (
         <p role="alert" className="error">
           {error}
+          {" "}
+          <button type="button" onClick={() => setLoadAttempt((value) => value + 1)}>
+            Retry audio
+          </button>
         </p>
       )}
     </div>

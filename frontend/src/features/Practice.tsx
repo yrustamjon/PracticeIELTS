@@ -1,3 +1,4 @@
+import { PracticeShare } from "./PracticeShare";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useBlocker } from "react-router-dom";
@@ -17,6 +18,7 @@ import { Loading, ErrorState, PageTitle } from "../components/ui";
 import { Pagination } from "./Catalog";
 import { AudioPlayer } from "../components/AudioPlayer";
 import { PracticeTimingEditor, type PlaybackTiming } from "./PracticeTimingEditor";
+import { useWorkspace } from "../stores/workspace";
 export function ComparisonView({ result }: { result: Comparison }) {
   return (
     <div className="comparison">
@@ -74,6 +76,7 @@ export function Practice() {
   return <Workspace key={id} initial={query.data} />;
 }
 function Workspace({ initial }: { initial: Session }) {
+  const { admin } = useWorkspace();
   const [session, setSession] = useState(initial);
   const [listPage, setListPage] = useState(
     Math.floor(initial.position / 8) + 1,
@@ -187,13 +190,24 @@ function Workspace({ initial }: { initial: Session }) {
       setBusy(false);
     }
   }
+  function sharePractice(remove: boolean) {
+    const pending = chain.current.catch(() => {}).then(async () => {
+      if (remove) {
+        await api(`sessions/${session.id}/share/`, {method: "DELETE"});
+        return {token: null};
+      }
+      return post<{token: string}>(`sessions/${session.id}/share/`);
+    });
+    chain.current = pending;
+    return pending;
+  }
   async function saveTiming(start_ms: number, end_ms: number) {
     setBusy(true);
     setError(undefined);
     setTimingMessage("");
     try {
       await persist(answer, session.position);
-      const saved = await api<Session>(`sessions/${session.id}/timing/`, {
+      const timingSave = chain.current.catch(() => {}).then(() => api<Session>(`sessions/${session.id}/timing/`, {
         method: "PATCH",
         body: JSON.stringify({
           position: session.position,
@@ -201,12 +215,14 @@ function Workspace({ initial }: { initial: Session }) {
           end_ms,
           revision: session.timing_revision ?? null,
         }),
-      });
+      }));
+      chain.current = timingSave;
+      const saved = await timingSave;
       setSession(saved);
       cache.setQueryData(["session", String(session.id)], saved);
       setTimingPreview(null);
       setTimingPlayRequest(0);
-      setTimingMessage("Timing saved for Easy Practice.");
+      setTimingMessage(`Timing saved for ${session.difficulty.charAt(0).toUpperCase() + session.difficulty.slice(1)} Practice.`);
       void cache.invalidateQueries({ queryKey: ["progress"] });
     } finally {
       setBusy(false);
@@ -255,7 +271,7 @@ function Workspace({ initial }: { initial: Session }) {
         material: session.material,
         difficulty,
       });
-      navigate(`/practice/${next.id}`);
+      navigate(`/practice/${next.id}${admin ? "?workspace=admin" : ""}`);
     } catch (e) {
       setError(e);
     } finally {
@@ -376,10 +392,11 @@ function Workspace({ initial }: { initial: Session }) {
             playRequest={timingPlayRequest}
           />
           <div className="practice-answer-scroll">
-            {session.difficulty === "easy" && session.can_edit_timing && (
+            {session.can_edit_timing && (
               <PracticeTimingEditor
                 key={`${session.version}:${session.position}:${session.timing_revision}`}
                 interval={interval}
+                difficulty={session.difficulty}
                 duration={session.audio.duration_ms}
                 previousEnd={session.groups[session.position - 1]?.end_ms}
                 nextStart={session.groups[session.position + 1]?.start_ms}
@@ -504,6 +521,7 @@ function Workspace({ initial }: { initial: Session }) {
           </div>
         </section>
       </div>
+      <PracticeShare key={session.id} session={session} writeShare={sharePractice} />
     </div>
   );
 }

@@ -1,0 +1,16 @@
+# Reading — reviewed passage workflow
+- Status: READING-10-01 completed: one passage deployed and actual-site desktop/phone verified with explicit authorization. Remaining Cambridge 10 passages are pending.
+- Source: user-provided full Cambridge book PDFs (for example, an accessible Google Drive folder). Keep original source files private and retain book/test/passage/page references.
+- Convert Reading content into structured, responsive web content rather than displaying the original PDF pages as the learner interface.
+- Desktop: passage on the left; instructions, numbered questions and answer inputs on the right. Both panes scroll independently.
+- Left pane: preserve the complete passage, title, paragraph labels, meaningful formatting and required images/diagrams. Remove page margins, headers/footers, artificial page breaks and unnecessary blank spaces so the passage reads continuously. Preserve paragraph spacing and content order.
+- Right pane: preserve every instruction, question number, option, table/diagram and answer constraint; provide the appropriate answer controls and retain question-to-passage relationships.
+- Mobile: accessible Passage / Questions tabs with saved answers and retained scroll positions when switching.
+- Import: extract text directly from text PDFs; use OCR for scanned pages. Do not claim automatic extraction is lossless. Flag uncertain or missing content instead of inventing it.
+- Required review before publication: compare passage, images, instructions, questions and answer keys against the original PDF, correct extraction/OCR/layout errors, and confirm nothing is omitted or duplicated. Provide an administrator source-PDF comparison/review view.
+- Learner flow: open book/test → read passages and enter answers → submit → see checked results and mistakes. Persist answers and enforce server permissions; keep answer keys unavailable before submission.
+- Next action when Reading work is explicitly requested: obtain the source folder/PDFs, inventory Reading tests and answer keys, then implement and verify one complete passage/question workflow before importing more books.
+
+## First passage preparation (2026-10-28)
+User-supplied Cambridge-IELTS-10-Ebook.pdf is a scanned 178-page PDF; its embedded text is only a repeated footer. First reviewed passage: Test 1 / Passage 1, printed pp.17–20 (PDF pp.18–21), key printed p.152 (PDF p.153). OCR is only a draft: visually corrected the two-column order, joined page/column continuations, restored the omitted Date column and complete five-row table, retained all 13 paragraphs and 13 questions. Source and transcription remain private, outside Git.
+Desktop/browser verification covers original passage and table completeness, independent scrolling panes, 13 saved answers/reload, phone Passage/Questions tabs with retained scroll, and a persisted 13/13 submission. Teacher preview compares each original source/key page with native content and private keys. Generic import command: `manage.py import_reading --json reviewed.json --pdf original.pdf --owner editor --book "Book" --test 1 --passage 1`; command never publishes. API publication requires explicit source comparison and rights confirmation. Untimed passage practice only; full 40-question/timed Reading, diagrams/images and remaining passages are subsequent work.

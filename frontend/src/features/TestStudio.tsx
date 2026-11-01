@@ -1,3 +1,4 @@
+import { ResultNavigation } from "../components/ResultNavigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -274,6 +275,7 @@ export function TestStudio() {
           : "New test";
   return (
     <div className="catalog-page admin-studio unified-studio">
+      <ResultNavigation steps={[{label: "Admin dashboard", to: "/admin"}, {label: "Content library"}]} back={{label: "Back to dashboard", to: "/admin"}} />
       <PageTitle
         eyebrow="ADMIN / CONTENT LIBRARY"
         title={t?.title || selected?.name || "Books"}
@@ -310,7 +312,7 @@ export function TestStudio() {
             <CatalogBreadcrumbs
               categories={categories.data || []}
               category={category}
-              base="/admin"
+              base="/admin/content"
               rootLabel="Books"
             />
             {t && (
@@ -330,7 +332,7 @@ export function TestStudio() {
               title="Book or volume not found"
               description="Return to Books to choose another item."
               action={
-                <Link className="button secondary" to="/admin">
+                <Link className="button secondary" to="/admin/content">
                   Books
                 </Link>
               }
@@ -411,7 +413,7 @@ export function TestStudio() {
                       </span>
                       <div>
                         <span className="small-label">
-                          FULL MOCK + PRACTICE
+                          {t.full?.practice_available === false ? "FULL MOCK" : "FULL MOCK + PRACTICE"}
                         </span>
                         <h3>
                           {t.assembly_state === "queued" ||
@@ -423,11 +425,21 @@ export function TestStudio() {
                         </h3>
                         <p>
                           {t.full?.status === "published"
-                            ? `${t.full.question_count} published questions · ${t.full.mock_available ? "Mock + Practice" : "Practice available"}`
+                            ? `${t.full.question_count} published questions · ${t.full.practice_available === false ? t.full.audio_available ? "Mock audio available · Practice pending" : "Question-only Mock · audio pending" : t.full.mock_available ? "Mock + Practice" : "Practice available"}`
                             : "Publishing all four Parts prepares Full test automatically. You can also upload one complete recording."}
                         </p>
                       </div>
                       <span className="pill">{ready} / 4 ready</span>
+                      {t.parts.length === 4 && t.parts.every((p) => p.mock_available) && (!t.full || t.full.practice_available === false) && (
+                        <button className="button secondary" disabled={busy} onClick={async () => {
+                          if (!window.confirm("Publish a Full question-only Mock from the four reviewed Part papers and keys?")) return;
+                          setBusy(true); setError(undefined);
+                          try {
+                            await post(`listening-tests/${t.id}/publish-question-full/`, {confirm_review: true});
+                            await cache.invalidateQueries({queryKey: ["studio-test", t.id]});
+                          } catch (e) {setError(e);} finally {setBusy(false);}
+                        }}>Publish Full questions</button>
+                      )}
                       <button
                         className="button secondary full-recording-button"
                         disabled={

@@ -1,0 +1,750 @@
+/* Phone layouts are loaded after the shared desktop and authoring styles. */
+.mobile-bottom-nav,
+.mobile-drawer-heading {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    --phone-bottom-space: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+  .topbar {
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    gap: 8px;
+  }
+  .topbar .brand {
+    font-size: 20px;
+    gap: 6px;
+  }
+  .topbar .brand > svg {
+    width: 25px;
+    height: 25px;
+  }
+  .topbar .mobile-menu,
+  .profile-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .profile-button > svg {
+    display: none;
+  }
+  .profile-button .workspace-badge {
+    display: none;
+  }
+  .profile-menu {
+    top: 50px;
+    width: 210px;
+    border-radius: 14px;
+  }
+  .profile-menu > a,
+  .profile-menu > button {
+    min-height: 46px;
+  }
+  .main-content {
+    padding: 84px 16px calc(var(--phone-bottom-space) + 16px);
+    min-width: 0;
+  }
+  .mobile-bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 35;
+    padding: 7px max(8px, env(safe-area-inset-right, 0px))
+      calc(7px + env(safe-area-inset-bottom, 0px))
+      max(8px, env(safe-area-inset-left, 0px));
+    background: #fffffffa;
+    border-top: 1px solid #dce7ed;
+    box-shadow: 0 -6px 24px #14283d08;
+  }
+  .mobile-bottom-nav a {
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #647b8c;
+  }
+  .mobile-bottom-nav a.active {
+    color: #087c90;
+    background: #eaf7f8;
+  }
+  .admin-workspace .mobile-bottom-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-workspace .mobile-bottom-nav.has-users {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .sidebar {
+    width: min(320px, calc(100vw - 40px));
+    z-index: 50;
+    padding: 12px 12px calc(20px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-shadow: 12px 0 40px #14283d15;
+    visibility: hidden;
+  }
+  .sidebar.open {
+    visibility: visible;
+  }
+  .mobile-drawer-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 5px 12px 14px;
+    font-size: 15px;
+  }
+  .mobile-drawer-heading button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .sidebar-label {
+    display: none;
+  }
+  .sidebar nav {
+    gap: 4px;
+  }
+  .sidebar nav a {
+    min-height: 48px;
+    border-radius: 10px;
+  }
+  .sidebar-footer {
+    margin-top: 24px;
+  }
+  .drawer-backdrop {
+    z-index: 45;
+    background: #102b4666;
+    backdrop-filter: blur(3px);
+  }
+  .page-title,
+  .catalog-page .page-title,
+  .practice-screen .page-title {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .page-title > div {
+    min-width: 0;
+  }
+  .page-title h1,
+  .catalog-page .page-title h1,
+  .practice-screen .page-title h1 {
+    font-size: clamp(23px, 6vw, 28px);
+    overflow-wrap: anywhere;
+  }
+  .page-title p,
+  .catalog-page .page-title p,
+  .practice-screen .page-title p {
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .main-content .button,
+  .catalog-page .page-title .button,
+  .practice-screen .page-title .button {
+    min-height: 44px;
+    font-size: 13px;
+    padding: 10px 14px;
+  }
+  .main-content
+    input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+  .main-content select,
+  .main-content textarea,
+  .auth-page input {
+    font-size: 16px;
+  }
+  .panel {
+    border-radius: 14px;
+  }
+  .breadcrumbs,
+  .studio-location {
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+  .breadcrumbs {
+    flex-wrap: wrap;
+  }
+  .crumb-item {
+    min-width: 0;
+  }
+  .dashboard-intro {
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .date-label {
+    font-size: 12px;
+  }
+  .continue-body {
+    flex-wrap: wrap;
+    gap: 16px;
+    min-height: 0;
+  }
+  .continue-details {
+    flex: 1 1 180px;
+    min-width: 0;
+  }
+  .continue-actions {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .continue-actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+  .continue-actions > .text-link {
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .continue-details .metadata {
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .section-title h2 {
+    font-size: 19px;
+  }
+  .progress-stats small {
+    font-size: 11px;
+  }
+  .footer {
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .catalog-toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .catalog-toolbar .search-field {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .catalog-card h3 {
+    font-size: 18px;
+  }
+  .catalog-card p,
+  .catalog-card .catalog-meta {
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .catalog-card .pill {
+    font-size: 10px;
+  }
+  .catalog-card {
+    padding: 20px;
+    border-radius: 14px;
+  }
+  .catalog-pagination {
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .catalog-pagination > div {
+    flex-wrap: wrap;
+  }
+  .catalog-pagination button {
+    min-width: 38px;
+    min-height: 40px;
+    font-size: 13px;
+  }
+  .test-part-picker {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+  .test-part-picker button {
+    flex: 0 0 100px;
+    min-height: 60px;
+    font-size: 13px;
+  }
+  .test-part-picker button small {
+    font-size: 11px;
+  }
+  .test-mode-panel {
+    padding: 18px;
+  }
+  .test-mode-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .test-mode-cards > button {
+    padding: 18px;
+    gap: 10px;
+  }
+  .test-mode-cards > button strong {
+    font-size: 16px;
+  }
+  .test-mode-cards > button > span {
+    font-size: 13px;
+  }
+  .test-mode-cards small,
+  .test-difficulties small {
+    font-size: 11px;
+  }
+  .test-difficulties {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .test-difficulties label {
+    padding: 14px;
+  }
+  .test-difficulties strong {
+    font-size: 14px;
+  }
+  .test-transcript-link {
+    font-size: 13px;
+    min-height: 44px;
+  }
+  .practice-toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .practice-levels {
+    display: flex;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+  .practice-levels button {
+    flex: 1;
+    min-height: 58px;
+    padding: 10px 6px;
+    font-size: 14px;
+  }
+  .practice-levels button small {
+    font-size: 10px;
+    white-space: normal;
+    line-height: 1.5;
+  }
+  .practice-toolbar > .pill {
+    font-size: 11px;
+    margin-left: 0;
+  }
+  .practice-split {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .practice-session-main {
+    order: -1;
+    width: 100%;
+    min-height: 0;
+  }
+  .practice-session-main .workspace-heading h2 {
+    font-size: 21px;
+  }
+  .practice-session-main .save-status {
+    font-size: 11px;
+  }
+  .practice-session-main .workspace-heading {
+    padding: 18px 16px;
+  }
+  .practice-session-main .audio-player {
+    margin: 0 12px 16px;
+    padding: 12px;
+    border-radius: 12px;
+  }
+  .audio-top {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .audio-top .eyebrow,
+  .practice-session-main .audio-top .small-label {
+    font-size: 10px;
+  }
+  .audio-controls,
+  .practice-session-main .audio-controls {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    align-items: center;
+  }
+  .audio-controls > .audio-timeline {
+    grid-row: 1;
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-bottom: 6px;
+  }
+  .audio-controls > .play-button {
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+  }
+  .audio-controls > .icon-button,
+  .practice-session-main .audio-controls > .icon-button {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+  }
+  .audio-controls > select {
+    min-height: 44px;
+    width: 100%;
+    font-size: 16px;
+  }
+  .audio-controls > .volume {
+    display: none;
+  }
+  .audio-timeline > span {
+    font-size: 12px;
+  }
+  .audio-timeline input {
+    min-height: 28px;
+    touch-action: pan-y;
+  }
+  .audio-controls > button {
+    justify-self: center;
+  }
+  .audio-controls > button[aria-label="Forward 5 seconds"] {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  .audio-controls > button[aria-label="Replay segment"] {
+    grid-column: 4;
+    grid-row: 2;
+  }
+  .audio-controls > select {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+  .practice-session-main .dictation-editor {
+    padding: 0 16px 12px;
+  }
+  .practice-session-main .dictation-editor > textarea {
+    min-height: 160px;
+    font-size: 16px;
+    border-radius: 10px;
+  }
+  .expected-word-count {
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .practice-check-actions,
+  .practice-check-actions > div {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .practice-check-actions {
+    padding: 14px 16px;
+  }
+  .practice-check-actions .text-link {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+  }
+  .practice-check-actions > .button {
+    width: 100%;
+    justify-content: center;
+  }
+  .practice-session-main .workspace-navigation {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+  .practice-session-main .workspace-navigation > .muted {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    text-align: center;
+    font-size: 12px;
+  }
+  .practice-session-main .workspace-navigation .button {
+    justify-content: center;
+    white-space: normal;
+    font-size: 12px;
+    min-height: 44px;
+    padding: 10px;
+  }
+  .practice-exercises {
+    width: 100%;
+    height: auto;
+  }
+  .practice-exercise-list {
+    grid-auto-rows: minmax(76px, auto);
+    max-height: 220px;
+  }
+  .practice-exercise-list > button {
+    min-height: 56px;
+  }
+  .practice-exercise-list strong {
+    font-size: 12px;
+  }
+  .practice-exercise-list small {
+    font-size: 10px;
+  }
+  .practice-exercises > .catalog-pagination button {
+    min-width: 34px;
+    min-height: 40px;
+  }
+  .studio-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .studio-tree,
+  .studio-main {
+    width: 100%;
+    min-width: 0;
+  }
+  .studio-tree {
+    position: static;
+  }
+  .book-hierarchy .studio-tree-scroll {
+    max-height: 220px;
+  }
+  .studio-test-cards,
+  .studio-part-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-test-cards .catalog-card {
+    padding: 18px;
+  }
+  .studio-test-cards .catalog-card h3,
+  .studio-part-card h3 {
+    font-size: 17px;
+  }
+  .studio-part-card p,
+  .studio-test-heading p {
+    font-size: 12px;
+  }
+  .studio-part-features,
+  .attach-part {
+    font-size: 11px;
+  }
+  .hierarchy-select,
+  .book-hierarchy .hierarchy-select {
+    min-height: 44px;
+    font-size: 13px !important;
+  }
+  .hierarchy-toggle {
+    width: 32px;
+    height: 44px;
+  }
+  .hierarchy-leaf {
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .hierarchy-leaf > small {
+    font-size: 10px;
+  }
+  .studio-steps {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 10px;
+  }
+  .stepped-editor .studio-steps button,
+  .studio-editor-layout .stepped-editor .studio-steps button {
+    flex-shrink: 0;
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .studio-test-heading,
+  .studio-level-heading > div {
+    flex-wrap: wrap;
+  }
+  .studio-modal {
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    width: calc(100vw - 32px);
+  }
+  .auth-page {
+    min-height: 100dvh;
+  }
+  .auth-form-side {
+    padding: 28px 20px;
+  }
+  .auth-form-wrap {
+    width: 100%;
+    max-width: 420px;
+  }
+  .auth-form-wrap h1 {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 700px) {
+  .exam-topbar {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    gap: 8px;
+  }
+  .exam-main {
+    scroll-padding-bottom: 24px;
+  }
+  .exam-exit {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+  }
+  #exam-navigation-slot {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .question-nav-label {
+    min-height: 38px;
+    padding: 8px;
+    font-size: 12px;
+  }
+  .question-jump {
+    min-width: 32px;
+    height: 36px;
+    font-size: 12px;
+  }
+  .question-nav-part > div {
+    gap: 5px;
+  }
+  .question-nav-parts {
+    max-height: 116px;
+  }
+  .exam-main .reference-question-paper .exam-answer-input,
+  .native-paper-answer input[type="text"],
+  .native-paper-answer select {
+    min-height: 36px;
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+}
+
+@media (max-width: 380px) {
+  .practice-exercise-list {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(64px, auto);
+  }
+  .practice-session-main .workspace-navigation .button {
+    font-size: 11px;
+    padding: 10px 6px;
+    gap: 4px;
+  }
+}
+
+.hierarchy-mobile-trigger {
+  display: none;
+}
+@media (max-width: 760px) {
+  .book-hierarchy .hierarchy-desktop-title {
+    display: none;
+  }
+  .book-hierarchy .studio-tree-head {
+    padding: 0;
+  }
+  .hierarchy-mobile-trigger {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 16px;
+    border: 0;
+    background: transparent;
+    color: #15394c;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+  .hierarchy-mobile-trigger span {
+    flex: 1;
+  }
+  .mobile-expanded .hierarchy-mobile-trigger > svg:last-child {
+    transform: rotate(90deg);
+  }
+  .book-hierarchy:not(.mobile-expanded) .hierarchy-content {
+    display: none;
+  }
+  .book-hierarchy .studio-tree-search input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .studio-editor-layout .stepped-editor .studio-steps,
+  .stepped-editor .studio-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible;
+    padding: 0 0 12px;
+  }
+  .studio-editor-layout .stepped-editor .studio-steps button,
+  .stepped-editor .studio-steps button {
+    justify-content: center;
+    padding: 8px 4px;
+    gap: 5px;
+    font-size: 12px;
+    min-width: 0;
+    min-height: 44px;
+  }
+  .studio-main .form-panel,
+  .studio-main .question-author {
+    padding: 16px;
+  }
+  .studio-main .form-grid,
+  .studio-main .question-author .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-main .form-grid .full {
+    grid-column: 1;
+  }
+  .studio-main input:not([type="checkbox"]):not([type="radio"]),
+  .studio-main textarea,
+  .studio-main select,
+  .studio-modal input,
+  .studio-modal select {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 16px;
+  }
+  .studio-main .section-title,
+  .studio-main .editor-actions,
+  .studio-main .review-toolbar,
+  .studio-main .review-auto-timing,
+  .studio-main .review-validation,
+  .studio-main .pdf-controls {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .studio-main .button {
+    min-height: 44px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .studio-main summary,
+  .studio-main .text-link,
+  .studio-main .icon-button {
+    min-height: 44px;
+  }
+  .studio-main summary {
+    padding-block: 12px;
+  }
+  .studio-main .segment-timing {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stepped-editor #material-review .segment-editor-list {
+    overscroll-behavior-y: auto;
+  }
+  .studio-main .segment-timing > label {
+    font-size: 12px;
+  }
+  .studio-main .studio-wizard-navigation {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .studio-main .studio-wizard-navigation > span {
+    flex-basis: 100%;
+    order: -1;
+    text-align: center;
+  }
+  .studio-main .studio-wizard-navigation > .button {
+    flex: 1;
+    padding-inline: 8px;
+  }
+}

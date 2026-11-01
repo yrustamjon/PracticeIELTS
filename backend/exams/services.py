@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import re
 import secrets
 import tempfile
 from datetime import timedelta
@@ -21,6 +22,40 @@ def normalize(answer):
     if isinstance(answer, list):
         return sorted(str(a).strip().casefold() for a in answer)
     return " ".join(words(str(answer)))
+
+
+def publish_question_set(material, user, confirmed):
+    """Publish reviewed questions independently of recordings or transcripts."""
+    if not user.can_edit or not (user.is_staff or user.role == "admin" or material.owner_id == user.pk):
+        raise PermissionDenied("Only authorized editors can publish questions.")
+    if not confirmed:
+        raise ValidationError({"detail": "Review the question paper and answer keys and explicitly confirm publication."})
+    if not material.rights_confirmed or not material.source or not material.license:
+        raise ValidationError({"detail": "Confirm permission and provide source and license before publishing."})
+    with transaction.atomic():
+        locked = type(material).objects.select_for_update().get(pk=material.pk)
+        qs = locked.question_sets.first()
+        if not qs:
+            raise ValidationError({"detail": "Save reviewed questions before publishing."})
+        from .serializers import QuestionSetInput
+
+        payload = question_set_data(qs)
+        from learning.models import TestPart
+
+        assigned = TestPart.objects.filter(material=locked).values_list("number", flat=True).first()
+        validator = QuestionSetInput(data=payload, context={"assigned_part": assigned})
+        validator.is_valid(raise_exception=True)
+        if locked.published_questions_id == qs.pk and qs.published_at:
+            material.published_questions = qs
+            return qs
+        if not qs.published_at:
+            qs.published_at = timezone.now()
+            qs.save(update_fields=["published_at"])
+        locked.published_questions = qs
+        locked.save(update_fields=["published_questions", "updated_at"])
+        AuditLog.objects.create(actor=user, material=locked, action="questions.publish")
+    material.published_questions = qs
+    return qs
 
 
 def public_question(q, reveal=False):
@@ -88,10 +123,9 @@ def require_text_content(qs):
 
 def save_question_set(material, validated, user):
     audio = material.audio_assets.order_by("-id").first()
-    if not audio:
-        raise ValidationError(
-            {"detail": "Upload the recording before saving questions."}
-        )
+    previous = material.question_sets.filter(audio=audio).first()
+    if not user.is_superuser and previous and len(validated["questions"]) < previous.questions.count():
+        raise PermissionDenied("Only the super administrator can remove saved questions.")
     document_id = validated.get("document")
     document = None
     if document_id:
@@ -287,6 +321,8 @@ def attempt_data(attempt):
         "submitted_at": attempt.submitted_at,
         "answers": attempt.answers,
         "audio_started": bool(attempt.audio_started_at),
+        "audio_available": bool(qs.audio_id),
+        "review_audio_url": f"/api/v1/audio/{qs.audio_id}/stream/" if submitted and qs.audio_id else None,
         "questions": [
             {
                 **public_question(q, submitted),
@@ -328,6 +364,8 @@ def attempt_data(attempt):
 def issue_audio_ticket(attempt):
     with transaction.atomic():
         attempt = MockAttempt.objects.select_for_update().get(pk=attempt.pk)
+        if not attempt.question_set.audio_id:
+            raise ValidationError({"detail": "Audio is not available for this question-only Mock."})
         if attempt.submitted_at or (
             attempt.deadline and attempt.deadline <= timezone.now()
         ):
@@ -336,13 +374,13 @@ def issue_audio_ticket(attempt):
             raise PermissionDenied("Exam audio can be started once for this attempt.")
         token = secrets.token_urlsafe(32)
         attempt.audio_ticket_hash = hashlib.sha256(token.encode()).hexdigest()
-        attempt.audio_ticket_expires = timezone.now() + timedelta(minutes=2)
+        attempt.audio_ticket_expires = timezone.now() + (timedelta(hours=24) if attempt.timing == "untimed" else timedelta(minutes=2))
         attempt.audio_started_at = timezone.now()
         attempt.save()
         return token
 
 
-def exam_audio_response(attempt, token):
+def exam_audio_response(attempt, token, range_header=None):
     digest = hashlib.sha256(token.encode()).hexdigest()
     with transaction.atomic():
         attempt = (
@@ -350,6 +388,8 @@ def exam_audio_response(attempt, token):
             .select_related("version__audio")
             .get(pk=attempt.pk)
         )
+        if not attempt.question_set.audio_id:
+            raise PermissionDenied("Audio is not available for this question-only Mock.")
         if attempt.submitted_at or (
             attempt.deadline and attempt.deadline <= timezone.now()
         ):
@@ -366,18 +406,43 @@ def exam_audio_response(attempt, token):
         if not attempt.audio_consumed_at:
             attempt.audio_consumed_at = timezone.now()
             attempt.save(update_fields=["audio_consumed_at"])
-        audio = attempt.version.audio
+        audio = attempt.question_set.audio
+
+    start, end, status = 0, audio.size - 1, 200
+    if attempt.timing == "untimed" and range_header:
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header)
+        if not match or not any(match.groups()):
+            return HttpResponse(status=416, headers={"Content-Range": f"bytes */{audio.size}", "Cache-Control": "private, no-store"})
+        left, right = match.groups()
+        if not left:
+            start = max(0, audio.size - int(right))
+        else:
+            start = int(left)
+            end = min(end, int(right)) if right else end
+        if start > end or start >= audio.size:
+            return HttpResponse(status=416, headers={"Content-Range": f"bytes */{audio.size}", "Cache-Control": "private, no-store"})
+        status = 206
 
     def stream():
         with audio.file.open("rb") as file:
-            while chunk := file.read(65536):
+            file.seek(start)
+            remaining = end - start + 1
+            while remaining:
+                chunk = file.read(min(65536, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
                 yield chunk
 
-    response = StreamingHttpResponse(stream(), content_type=audio.mime_type)
-    response["Content-Length"] = str(audio.size)
+    response = StreamingHttpResponse(stream(), status=status, content_type=audio.mime_type)
+    response["Content-Length"] = str(end - start + 1)
     response["Cache-Control"] = "private, no-store"
-    response["Accept-Ranges"] = "none"
+    response["Accept-Ranges"] = "bytes" if attempt.timing == "untimed" else "none"
     response["X-Content-Type-Options"] = "nosniff"
+    response["X-Accel-Buffering"] = "no"
+    if status == 206:
+        response["Content-Range"] = f"bytes {start}-{end}/{audio.size}"
+
     return response
 
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=PracticeIELTS Django API
+After=network.target
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/home/PracticeIELTS/backend
+ExecStart=/home/PracticeIELTS/backend/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8001 --workers 2 --timeout 300
+Restart=on-failure
+UMask=0077
+[Install]
+WantedBy=multi-user.target

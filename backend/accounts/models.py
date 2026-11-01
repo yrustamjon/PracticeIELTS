@@ -13,5 +13,9 @@ class User(AbstractUser):
     @property
     def can_edit(self):
         return self.is_active and (
-            self.is_staff or self.role in (self.Role.TEACHER, self.Role.ADMIN)
+            self.is_superuser or self.is_staff or self.role in (self.Role.TEACHER, self.Role.ADMIN)
         )
+
+    @property
+    def can_view_users(self):
+        return self.is_active and (self.is_superuser or self.role == self.Role.ADMIN)

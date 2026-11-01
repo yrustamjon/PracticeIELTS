@@ -29,7 +29,7 @@ import {
   type Session,
   type MockAttempt,
 } from "../services/api";
-import { useAuth } from "../stores/auth";
+import { useWorkspace } from "../stores/workspace";
 import {
   Empty,
   ErrorState,
@@ -138,7 +138,7 @@ export function NestedLibrary({
     testPage = Math.max(1, Number(params.get("test_page")) || 1);
   const [search, setSearch] = useState(term),
     [folderPage, setFolderPage] = useState(1);
-  const editor = useAuth((s) => s.user?.can_edit);
+  const { admin: editor } = useWorkspace();
   useEffect(() => {
     setSearch(term);
     setFolderPage(1);
@@ -183,6 +183,13 @@ export function NestedLibrary({
     queryFn: () => api<{ results: MockAttempt[] }>("mock-attempts/"),
     enabled: defaultMode === "mock",
   });
+  const readingBooks = useQuery({
+    queryKey: ["library-reading-books"],
+    enabled: !category && defaultMode === "all",
+    queryFn: () => allPages<{book: string; published_version: number | null}>("reading-papers/?page_size=100"),
+  });
+  const readingCollections = [...new Set((readingBooks.data || []).filter(p => p.published_version).map(p => p.book.replace(/\s+\d+$/, "")))].filter(name => `${name} Reading`.toLowerCase().includes(term.toLowerCase()));
+  const showReadingBooks = !category && defaultMode === "all";
   function update(key: string, value: string) {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
@@ -196,28 +203,28 @@ export function NestedLibrary({
   return (
     <div className="catalog-page">
       <PageTitle
-        eyebrow="LISTENING / LIBRARY"
+        eyebrow={showReadingBooks ? "YOUR LIBRARY" : "LISTENING / LIBRARY"}
         title={
-          selected?.name ||
-          (defaultMode === "mock" ? "Mock Tests" : "Practice Library")
+          (selected ? `${selected.name}${!selected.parent && !/listening/i.test(selected.name) ? " Listening" : ""}` : undefined) ||
+          (defaultMode === "mock" ? "Listening Mocks" : defaultMode === "practice" ? "Listening Practice" : "Library")
         }
         description={
           inVolume
             ? "Choose a test, then open its Parts."
             : category
               ? "Choose a volume, for example Cambridge 10."
-              : "Choose a book, then a volume and a test."
+              : showReadingBooks ? "Choose a Listening or Reading book." : "Choose a book, then a volume and a test."
         }
         action={
           editor ? (
             <Link
               className="button primary"
-              to={`/admin${category ? `?category=${category}` : ""}`}
+              to={`/admin/content${category ? `?category=${category}` : ""}`}
             >
               <Plus size={16} />
               Add material
             </Link>
-          ) : undefined
+          ) : defaultMode === "mock" ? <Link className="button secondary" to="/mock-tests/history">My Mock results</Link> : undefined
         }
       />
       <CatalogBreadcrumbs
@@ -302,12 +309,13 @@ export function NestedLibrary({
             </section>
           )}
 
-        {children.length > 0 && (
+        {showReadingBooks && readingBooks.error && <ErrorState error={readingBooks.error} />}
+        {(children.length > 0 || (showReadingBooks && readingCollections.length > 0)) && (
           <section className="catalog-section">
             <div className="section-title">
               <h2>{category ? "Volumes" : "Books"}</h2>
               <small className="muted">
-                {children.length} {category ? "volumes" : "books"}
+                {children.length + (showReadingBooks ? readingCollections.length : 0)} {category ? "volumes" : "books"}
               </small>
             </div>
             <div className="catalog-cards">
@@ -321,9 +329,9 @@ export function NestedLibrary({
                     <span className="catalog-folder">
                       <FolderOpen size={23} />
                     </span>
-                    <span className="pill">{c.parent ? "VOLUME" : "BOOK"}</span>
+                    <span className="pill">{c.parent ? "VOLUME" : "LISTENING"}</span>
                   </div>
-                  <h3>{c.name}</h3>
+                  <h3>{c.name}{!c.parent && !/listening/i.test(c.name) ? " Listening" : ""}</h3>
                   <p>
                     {c.description ||
                       "Open the books and tests in this collection."}
@@ -334,6 +342,7 @@ export function NestedLibrary({
                   </div>
                 </button>
               ))}
+              {showReadingBooks && readingCollections.map(name => <Link key={name} className="catalog-card" to={`/reading?collection=${encodeURIComponent(name)}`}><div className="catalog-card-top"><span className="catalog-folder"><BookOpen size={23}/></span><span className="pill">READING</span></div><h3>{name} Reading</h3><p>Read passages and answer the questions. Your answers are saved.</p><div className="catalog-card-bottom">Open Reading<ChevronRight size={15}/></div></Link>)}
             </div>
             {children.length > 6 && (
               <Pagination
@@ -442,7 +451,7 @@ export function NestedLibrary({
                 </div>
               </section>
             )}
-            {!children.length && !tests.data.count && !materials.data.count && (
+            {!categories.isPending && !children.length && !tests.data.count && !materials.data.count && (!showReadingBooks || (!readingBooks.isPending && !readingBooks.error && !readingCollections.length)) && (
               <div className="panel">
                 <Empty
                   title="No materials in this collection"
@@ -650,7 +659,10 @@ export function TestDetail() {
               key={target.id}
               materialId={target.id}
               available={target.mock_available}
+              audioAvailable={target.audio_available}
             />
+          ) : target.practice_available === false ? (
+            <p className="notice-box">Dictation and Transcript Study will be available after audio and a reviewed transcript are added. You can open the question-only Mock now.</p>
           ) : (
             <>
               <div className="test-difficulties">
@@ -691,7 +703,7 @@ export function TestDetail() {
               </button>
             </>
           )}
-          {target?.status === "published" && (
+          {target?.status === "published" && target.practice_available !== false && (
             <Link
               className="text-link test-transcript-link"
               to={`/transcript/${target.id}`}

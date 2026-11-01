@@ -193,8 +193,8 @@ def test_staff_administrator_can_correct_timing(timing):
     assert save(timing[0], session).status_code == 200
 
 
-@pytest.mark.parametrize("difficulty", ["medium", "hard", "full"])
-def test_timing_correction_is_easy_only(timing, difficulty):
+@pytest.mark.parametrize("difficulty", ["full"])
+def test_full_mode_timing_remains_read_only(timing, difficulty):
     session = start(timing, difficulty=difficulty)
     assert save(timing[0], session).status_code == 400
     assert session["can_edit_timing"] is False
@@ -292,3 +292,141 @@ def test_legacy_easy_session_keeps_its_grouping_and_correction_scope(timing):
     modern = start(timing)
     assert len(modern["groups"]) == 4
     assert modern["timing_revision"] is None
+
+
+@pytest.mark.parametrize("difficulty", ["easy", "medium", "hard"])
+def test_all_learning_modes_keep_separate_persisted_timing_and_history(
+    timing, difficulty
+):
+    client, users, material, version = timing
+    student = start(timing, "student", difficulty)
+    admin = start(timing, difficulty=difficulty)
+    original = list(version.segments.values("id", "start_ms", "end_ms", "text"))
+    end = admin["groups"][0]["end_ms"] - 50
+    saved = save(client, admin, position=0, start_ms=150, end_ms=end)
+    assert saved.status_code == 200, saved.data
+    from learning.models import PracticeTimingRevision
+
+    revision = PracticeTimingRevision.objects.get(pk=saved.data["timing_revision"])
+    assert revision.difficulty == difficulty
+    assert (
+        client.get(f"/api/v1/sessions/{admin['id']}/").data["groups"][0]["start_ms"]
+        == 150
+    )
+    client.force_authenticate(users["student"])
+    assert (
+        client.get(f"/api/v1/sessions/{student['id']}/").data["groups"]
+        == student["groups"]
+    )
+    newer = start(timing, "student", difficulty)
+    assert newer["groups"] == saved.data["groups"]
+    assert newer["id"] != student["id"]
+    for other in {"easy", "medium", "hard"} - {difficulty}:
+        unchanged = start(timing, "admin", other)
+        assert unchanged["timing_revision"] is None
+        assert unchanged["groups"][0]["start_ms"] == 100
+    assert list(version.segments.values("id", "start_ms", "end_ms", "text")) == original
+
+
+def test_medium_and_hard_revisions_do_not_conflict_with_one_another(timing):
+    medium = start(timing, difficulty="medium")
+    hard = start(timing, difficulty="hard")
+    client = timing[0]
+    first = save(client, medium, position=0, start_ms=150, end_ms=2400)
+    second = save(client, hard, position=0, start_ms=200, end_ms=6900)
+    assert first.status_code == second.status_code == 200
+    assert first.data["timing_revision"] != second.data["timing_revision"]
+    assert (
+        client.get(f"/api/v1/sessions/{medium['id']}/").data["groups"][0]["start_ms"]
+        == 150
+    )
+    assert (
+        client.get(f"/api/v1/sessions/{hard['id']}/").data["groups"][0]["start_ms"]
+        == 200
+    )
+
+
+def test_live_practice_sharing_scopes_part_and_difficulty(timing):
+    import uuid
+
+    from rest_framework.test import APIClient
+
+    from learning.models import Category, ListeningTest, TestPart
+
+    client, users, material, version = timing
+    book = Category.objects.create(name="Original book")
+    material.category.parent = book
+    material.category.save()
+    test = ListeningTest.objects.create(
+        title="Test 1", category=material.category, owner=users["teacher"]
+    )
+    TestPart.objects.create(test=test, number=1, material=material)
+    medium = start(timing, "student", "medium")
+    path = f"/api/v1/sessions/{medium['id']}/share/"
+    initial_share = client.post(path)
+    assert initial_share.status_code == 200
+    initial_public = APIClient().get(f"/api/v1/shared-practice-results/{initial_share.data['token']}/")
+    assert initial_public.data["checked_count"] == 0
+    assert initial_public.data["status"] == "in_progress"
+    assert initial_public.data["results"] == []
+    instance = PracticeSession.objects.get(pk=medium["id"])
+    intervals = groups(instance)
+    for i, interval in enumerate(intervals):
+        response = client.post(
+            f"/api/v1/sessions/{medium['id']}/check/",
+            {"position": i, "answer": interval["text"] if i else "My incorrect answer"},
+            format="json",
+        )
+        assert response.status_code == 200
+    # The newest check for the same exercise wins; duplicate checks do not add rows.
+    client.post(
+        f"/api/v1/sessions/{medium['id']}/check/",
+        {"position": 0, "answer": intervals[0]["text"]},
+        format="json",
+    )
+    hard = start(timing, "student", "hard")
+    client.post(
+        f"/api/v1/sessions/{hard['id']}/check/",
+        {"position": 0, "answer": "Other difficulty answer"},
+        format="json",
+    )
+    client.force_authenticate(users["other_admin"])
+    for method in (client.get, client.post, client.delete):
+        assert method(path).status_code == 404
+    client.force_authenticate(users["student"])
+    created = client.post(path)
+    assert created.status_code == 200
+    token = created.data["token"]
+    assert client.post(path).data["token"] == token
+    public = APIClient()
+    url = f"/api/v1/shared-practice-results/{token}/"
+    response = public.get(url)
+    assert response.status_code == 200
+    data = response.data
+    assert data["category_path"] == ["Original book", "Original timing fixtures"]
+    assert data["test_title"] == "Test 1" and data["part_label"] == "Part 1"
+    assert data["difficulty"] == "medium" and data["mode"] == "dictation"
+    assert data["exercise_count"] == 3 and data["accuracy"] == 100
+    assert len(data["results"]) == 3
+    assert data["results"][0]["answer"] == intervals[0]["text"]
+    assert "Other difficulty answer" not in str(data)
+    assert (
+        not {"user", "email", "id", "session", "material", "audio", "version"}
+        & data.keys()
+    )
+    assert response["Cache-Control"] == "no-store"
+    assert "noindex" in response["X-Robots-Tag"]
+    assert public.post(url).status_code == 405
+    material.title = "Changed later"
+    material.save()
+    refreshed = public.get(url).data
+    assert refreshed == {**data, "title": "Changed later"}
+    assert (
+        public.get(f"/api/v1/shared-practice-results/{uuid.uuid4()}/").status_code
+        == 404
+    )
+    assert client.delete(path).status_code == 204
+    assert public.get(url).status_code == 404
+    assert client.post(path).data["token"] != token
+    client.force_authenticate(None)
+    assert client.post(path).status_code in (401, 403)

@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly PracticeIELTS database/media backup at 02:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 UTC
+Persistent=true
+Unit=practiceielts-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -2,6 +2,7 @@ import re
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Q
 from django.db.models.deletion import ProtectedError
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
@@ -37,6 +38,7 @@ from exams.services import (
 from processing.documents import extract_pdf_text, reference_from_request
 from processing.services import job_data, queue_job
 
+from .audio_auth import StudyAudioAuthentication
 from .models import (
     AudioAsset,
     AuditLog,
@@ -73,6 +75,8 @@ from .services.practice_timing import (
 
 class EditorOrReadOnly(BasePermission):
     def has_permission(self, request, view):
+        if request.method == "DELETE" and not request.user.is_superuser:
+            return False
         return request.user.is_authenticated and (
             request.method in ("GET", "HEAD", "OPTIONS") or request.user.can_edit
         )
@@ -117,10 +121,10 @@ class MaterialViewSet(viewsets.ModelViewSet):
             return Material.objects.none()
         q = Material.objects.select_related("category", "published_version").all()
         if not self.request.user.can_edit:
-            q = q.filter(published_version__isnull=False)
+            q = q.filter(Q(published_version__isnull=False) | Q(published_questions__isnull=False))
         elif self.request.user.role == "teacher" and not self.request.user.is_staff:
             q = q.filter(owner=self.request.user) | q.filter(
-                published_version__isnull=False
+                Q(published_version__isnull=False) | Q(published_questions__isnull=False)
             )
         if self.request.query_params.get("mock_available") == "true":
             q = q.filter(published_questions__isnull=False)
@@ -414,6 +418,8 @@ class MaterialViewSet(viewsets.ModelViewSet):
                 )
             )
             last = end
+        if not request.user.is_superuser and len(data) < len(old_segments):
+            raise PermissionDenied("Only the super administrator can remove saved transcript sentences.")
         with transaction.atomic():
             version = TranscriptVersion.objects.create(
                 material=material,
@@ -427,6 +433,15 @@ class MaterialViewSet(viewsets.ModelViewSet):
                 actor=request.user, material=material, action="transcript.version"
             )
         return Response({"version_id": version.pk, "segments": len(clean)}, status=201)
+
+    @extend_schema(request=inline_serializer(name="PublishQuestions", fields={"confirm_review": serializers.BooleanField()}), responses=MaterialSerializer)
+    @action(detail=True, methods=["post"], url_path="publish-questions")
+    def publish_questions(self, request, pk=None):
+        material = self.editor_material(request)
+        from exams.services import publish_question_set
+
+        publish_question_set(material, request.user, request.data.get("confirm_review") is True)
+        return Response(self.get_serializer(material).data)
 
     @extend_schema(request=None, responses=MaterialSerializer)
     @action(detail=True, methods=["post"])
@@ -490,6 +505,51 @@ class MaterialViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(material).data)
 
 
+def study_audio(request, pk):
+    asset = get_object_or_404(AudioAsset, pk=pk)
+    permitted = TranscriptVersion.objects.filter(
+        audio=asset, published_at__isnull=False
+    ).exists() or (
+        request.user.can_edit
+        and (
+            request.user.is_staff
+            or request.user.role == "admin"
+            or asset.material.owner_id == request.user.pk
+        )
+    )
+    if not permitted:
+        from exams.models import MockAttempt
+
+        permitted = MockAttempt.objects.filter(
+            user=request.user, submitted_at__isnull=False, question_set__audio=asset
+        ).exists()
+    if not permitted:
+        raise PermissionDenied("This audio is private.")
+    guard_study(request.user, asset.material_id)
+    return asset
+
+
+class AudioPlayback(APIView):
+    @extend_schema(request=None, responses=inline_serializer(
+        name="StudyAudioPlayback", fields={"url": serializers.CharField(), "expires_in": serializers.IntegerField()}
+    ))
+    def post(self, request, pk):
+        from django.conf import settings
+        from django.core import signing
+
+        from .audio_auth import COOKIE, COOKIE_PATH, LIFETIME, SALT
+
+        study_audio(request, pk)
+        response = Response({"url": f"/api/v1/audio/{pk}/stream/", "expires_in": LIFETIME})
+        response.set_cookie(
+            COOKIE, signing.dumps({"user": request.user.pk, "session": request.user.get_session_auth_hash()}, salt=SALT),
+            max_age=LIFETIME, httponly=True, secure=settings.COOKIE_SECURE,
+            samesite="Strict", path=COOKIE_PATH,
+        )
+        response["Cache-Control"] = "no-store"
+        return response
+
+
 @extend_schema_view(
     get=extend_schema(
         responses={
@@ -500,21 +560,16 @@ class MaterialViewSet(viewsets.ModelViewSet):
     )
 )
 class AudioStream(APIView):
+    authentication_classes = [StudyAudioAuthentication]
+
     def get(self, request, pk):
-        asset = get_object_or_404(AudioAsset, pk=pk)
-        permitted = TranscriptVersion.objects.filter(
-            audio=asset, published_at__isnull=False
-        ).exists() or (
-            request.user.can_edit
-            and (
-                request.user.is_staff
-                or request.user.role == "admin"
-                or asset.material.owner_id == request.user.pk
-            )
-        )
-        if not permitted:
-            raise PermissionDenied("This audio is private.")
-        guard_study(request.user, asset.material_id)
+        asset = study_audio(request, pk)
+        from .private_media_cache import file_revision, not_modified, private_headers
+
+        etag = f'"audio-{asset.pk}-{file_revision(asset.file)}"'
+        cached = not_modified(request, etag)
+        if cached is not None:
+            return cached
         total = asset.size
         start = 0
         end = total - 1
@@ -554,7 +609,7 @@ class AudioStream(APIView):
         )
         response["Accept-Ranges"] = "bytes"
         response["Content-Length"] = str(end - start + 1)
-        response["Cache-Control"] = "private, no-store"
+        private_headers(response, etag)
         if status == 206:
             response["Content-Range"] = f"bytes {start}-{end}/{total}"
         return response
@@ -652,12 +707,29 @@ class SessionViewSet(viewsets.ViewSet):
             difficulty=difficulty,
             grouping_version=1,
             timing_revision=(
-                latest_timing_revision(material.published_version_id, 1)
-                if difficulty == "easy"
+                latest_timing_revision(material.published_version_id, 1, difficulty)
+                if difficulty in ("easy", "medium", "hard")
                 else None
             ),
         )
         return Response(session_data(session))
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["get", "post", "delete"])
+    def share(self, request, pk=None):
+        from .models import SharedPracticeResult
+        from .practice_sharing import share_response
+
+        with transaction.atomic():
+            session = self.own(request, pk)
+            PracticeSession.objects.select_for_update().get(pk=session.pk)
+            if request.method == "DELETE":
+                SharedPracticeResult.objects.filter(session=session).delete()
+                return share_response(None, status=204)
+            shared = SharedPracticeResult.objects.filter(session=session).first()
+            if request.method == "POST" and shared is None:
+                shared = SharedPracticeResult.objects.create(session=session, snapshot={})
+            return share_response({"token": str(shared.token) if shared else None})
 
     def retrieve(self, request, pk=None):
         return Response(session_data(self.own(request, pk)))
@@ -668,9 +740,9 @@ class SessionViewSet(viewsets.ViewSet):
         session = self.own(request, pk)
         if not request.user.is_staff and request.user.role != "admin":
             raise PermissionDenied("Only administrators can correct Practice timing.")
-        if session.difficulty != "easy":
+        if session.difficulty not in ("easy", "medium", "hard"):
             raise ValidationError(
-                {"detail": "Timing corrections are available only in Easy mode."}
+                {"detail": "Timing corrections are available in Easy, Medium and Hard modes."}
             )
         serializer = PracticeTimingInput(data=request.data)
         serializer.is_valid(raise_exception=True)
