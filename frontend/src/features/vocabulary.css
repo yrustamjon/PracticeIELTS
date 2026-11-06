@@ -91,7 +91,18 @@
 .vocabulary-mode-tabs { display: flex; gap: 6px; margin: 0 0 20px; padding: 4px; border: 1px solid #e1e9ed; border-radius: 12px; background: #f5f8f9; }
 .vocabulary-mode-tabs button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; color: #6c8390; border: 0; border-radius: 9px; background: transparent; font-size: 12px; font-weight: 750; cursor: pointer; }
 .vocabulary-mode-tabs button.active { color: #087782; background: white; box-shadow: 0 2px 7px #18384c12; }
-.vocabulary-lesson-card { overflow: hidden; max-width: 800px; margin: 0 auto; padding: clamp(20px,3.4vw,38px); border: 1px solid #dce8ec; border-radius: 19px; background: linear-gradient(145deg,#fff 0%,#fbfefe 100%); box-shadow: 0 12px 35px #18384c0b; }
+.vocabulary-lesson-card { overflow: hidden; max-width: 800px; margin: 0 auto; padding: clamp(20px,3.4vw,38px); border: 1px solid #dce8ec; border-radius: 19px; background: linear-gradient(145deg,#fff 0%,#fbfefe 100%); box-shadow: 0 12px 35px #18384c0b; animation: vocabulary-card-slide-in .28s cubic-bezier(.2,.75,.25,1) both; }
+@keyframes vocabulary-card-slide-in { from { opacity: .35; transform: translateX(28px) scale(.985); } to { opacity: 1; transform: translateX(0) scale(1); } }
+.vocabulary-start-screen { display: grid; justify-items: center; gap: 11px; max-width: 800px; min-height: 390px; margin: 0 auto; padding: clamp(26px,5vw,56px) 22px; border: 1px solid #dce9ec; border-radius: 19px; background: radial-gradient(ellipse at 50% 0%,#def2f0 0%,#f8fcfc 48%,#fff 100%); box-shadow: 0 12px 35px #18384c0a; text-align: center; }
+.vocabulary-start-icon { display: grid; place-items: center; width: 60px; height: 60px; margin-bottom: 5px; color: #087e88; border: 1px solid #d3e9e8; border-radius: 19px; background: #edf8f7; box-shadow: 0 6px 16px #147f8810; }
+.vocabulary-start-screen h3 { margin: 0; color: #193f52; font-size: clamp(24px,3vw,34px); letter-spacing: -.035em; }
+.vocabulary-start-screen > p { max-width: 55ch; margin: 0; color: #6d8390; font-size: 14px; line-height: 1.65; }
+.vocabulary-start-stats { display: flex; justify-content: center; gap: 8px; margin: 7px 0; }
+.vocabulary-start-stats span { display: grid; gap: 3px; min-width: 100px; padding: 12px 14px; border: 1px solid #e2ebed; border-radius: 12px; background: #ffffffc9; }
+.vocabulary-start-stats strong { color: #087b85; font-size: 20px; }
+.vocabulary-start-stats small { color: #82949d; font-size: 10px; }
+.vocabulary-start-button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-width: 210px; min-height: 48px; margin-top: 5px; border-radius: 11px; font-size: 13px; }
+.vocabulary-start-hint { max-width: 55ch; color: #86979f; font-size: 10px; line-height: 1.5; }
 .vocabulary-lesson-card-top { display: flex; justify-content: space-between; gap: 10px; color: #7e929c; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .vocabulary-lesson-word { margin: 38px 0 7px; color: #193e52; font-size: clamp(32px,5vw,48px); line-height: 1.1; letter-spacing: -.04em; text-align: center; overflow-wrap: anywhere; }
 .vocabulary-lesson-prompt { margin: 0 0 22px; color: #718795; font-size: 14px; text-align: center; }
@@ -154,6 +165,13 @@
   .vocabulary-mode-tabs button { gap: 5px; min-height: 42px; padding-inline: 5px; font-size: 10px; }
   .vocabulary-mode-tabs button svg { width: 14px; height: 14px; }
   .vocabulary-lesson-card { padding: 17px 14px; border-radius: 15px; }
+  .vocabulary-start-screen { gap: 9px; min-height: 350px; padding: 26px 15px; border-radius: 15px; }
+  .vocabulary-start-icon { width: 52px; height: 52px; border-radius: 16px; }
+  .vocabulary-start-screen h3 { font-size: 24px; }
+  .vocabulary-start-screen > p { font-size: 12px; }
+  .vocabulary-start-stats { width: 100%; gap: 6px; }
+  .vocabulary-start-stats span { flex: 1; min-width: 0; padding: 10px 6px; }
+  .vocabulary-start-button { width: 100%; min-height: 48px; }
   .vocabulary-lesson-card-top { font-size: 9px; }
   .vocabulary-lesson-word { margin-top: 29px; font-size: 34px; }
   .vocabulary-lesson-prompt { margin-bottom: 18px; font-size: 12px; }

@@ -51,6 +51,7 @@ export function Vocabulary() {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [dayMenuOpen, setDayMenuOpen] = useState(false);
   const [position, setPosition] = useState(0);
+  const [lessonStarted, setLessonStarted] = useState(false);
   const [reviewOnly, setReviewOnly] = useState(false);
   const [answer, setAnswer] = useState("");
   const [checked, setChecked] = useState(false);
@@ -105,6 +106,7 @@ export function Vocabulary() {
   function chooseDay(number: number) {
     setDay(number);
     setPosition(0);
+    setLessonStarted(false);
     setReviewOnly(false);
     setRevealed({});
     resetQuestion();
@@ -127,6 +129,7 @@ export function Vocabulary() {
   function startReview() {
     setReviewOnly(true);
     setPosition(0);
+    setLessonStarted(true);
     setRevealed({});
     resetQuestion();
   }
@@ -173,7 +176,7 @@ export function Vocabulary() {
           </div>
 
           <div className="vocabulary-mode-tabs" role="group" aria-label="Lug‘at rejimi">
-            <button type="button" aria-pressed={mode === "lesson"} className={mode === "lesson" ? "active" : ""} onClick={() => { setMode("lesson"); setPosition(0); setReviewOnly(false); setRevealed({}); resetQuestion(); }}><Sparkles size={16} /> Dars: 20 ta so‘z</button>
+            <button type="button" aria-pressed={mode === "lesson"} className={mode === "lesson" ? "active" : ""} onClick={() => { setMode("lesson"); setPosition(0); setLessonStarted(false); setReviewOnly(false); setRevealed({}); resetQuestion(); }}><Sparkles size={16} /> Dars: 20 ta so‘z</button>
             <button type="button" aria-pressed={mode === "dictionary"} className={mode === "dictionary" ? "active" : ""} onClick={() => setMode("dictionary")}><Search size={16} /> Lug‘atdan qidirish</button>
           </div>
 
@@ -185,7 +188,17 @@ export function Vocabulary() {
               </div>
               <div className="vocabulary-progress-line"><i style={{ width: `${Math.min(100, (position / Math.max(sessionWords.length, 1)) * 100)}%` }} /></div>
 
-              {lessonFinished ? (
+              {!lessonStarted ? (
+                <section className="vocabulary-start-screen">
+                  <span className="vocabulary-start-icon"><BookOpenCheck size={28} /></span>
+                  <span className="vocabulary-kicker">KUN {String(day).padStart(2, "0")} · IELTS VOCABULARY</span>
+                  <h3>{dayInfo?.topic}</h3>
+                  <p>20 ta kartochkani bittalab o‘rganing. Avval tarjimani eslang, javobingizni tekshiring, keyin keyingi kartochkaga o‘ting.</p>
+                  <div className="vocabulary-start-stats"><span><strong>20</strong><small>so‘z</small></span><span><strong>{dayKnown}</strong><small>esimda</small></span><span><strong>{reviewCount}</strong><small>qayta ko‘rish</small></span></div>
+                  <button type="button" className="button primary vocabulary-start-button" onClick={() => { setLessonStarted(true); setPosition(0); setReviewOnly(false); setRevealed({}); resetQuestion(); }}><Sparkles size={17} /> Darsni boshlash <ChevronRight size={17} /></button>
+                  <small className="vocabulary-start-hint">Har bir kartochkadan so‘ng “Esimda qoldi” yoki “Qayta ko‘raman” deb tanlang.</small>
+                </section>
+              ) : lessonFinished ? (
                 <section className="vocabulary-lesson-finished" aria-live="polite">
                   <span className="vocabulary-finished-icon"><Check size={27} /></span>
                   <span className="vocabulary-kicker">{reviewOnly ? "TAKRORLASH TUGALLANDI" : "BUGUNGI DARS TUGADI"}</span>
@@ -193,12 +206,12 @@ export function Vocabulary() {
                   <p>{reviewCount ? `${reviewCount} ta so‘zni yana bir bor mashq qilsangiz yaxshi bo‘ladi.` : "Ajoyib! Bugungi so‘zlarda qayta ko‘rish belgisi qolmadi."}</p>
                   <div className="vocabulary-finished-actions">
                     {!reviewOnly && reviewCount > 0 && <button type="button" className="button primary" onClick={startReview}><RotateCcw size={16} /> Qiyin so‘zlarni takrorlash ({reviewCount})</button>}
-                    {reviewOnly ? <button type="button" className="button primary" onClick={() => { setReviewOnly(false); setPosition(0); setRevealed({}); resetQuestion(); }}>Darsga qaytish</button> : <button type="button" className="button" onClick={() => { setPosition(0); setRevealed({}); resetQuestion(); }}>Darsni yana takrorlash</button>}
+                    {reviewOnly ? <button type="button" className="button primary" onClick={() => { setReviewOnly(false); setPosition(0); setLessonStarted(true); setRevealed({}); resetQuestion(); }}>Darsga qaytish</button> : <button type="button" className="button" onClick={() => { setPosition(0); setLessonStarted(true); setRevealed({}); resetQuestion(); }}>Darsni yana takrorlash</button>}
                     <button type="button" className="button" onClick={() => chooseDay(Math.min(50, day + 1))} disabled={day === 50}>Keyingi kun <ChevronRight size={16} /></button>
                   </div>
                 </section>
               ) : currentWord ? (
-                <article className="vocabulary-lesson-card">
+                <article key={currentWord.id} className="vocabulary-lesson-card">
                   <div className="vocabulary-lesson-card-top"><span>{reviewOnly ? "QAYTA MASHQ" : `SO‘Z ${position + 1} / ${sessionWords.length}`}</span><span>{currentWord.topic}</span></div>
                   <h3 className="vocabulary-lesson-word">{currentWord.word}</h3>
                   <p className="vocabulary-lesson-prompt">O‘zbekcha ma’nosini eslashga harakat qiling.</p>
@@ -220,7 +233,7 @@ export function Vocabulary() {
                 </article>
               ) : <div className="vocabulary-empty"><strong>Bu kun uchun so‘z topilmadi.</strong></div>}
 
-              {!lessonFinished && <div className="vocabulary-pager"><button type="button" disabled={position === 0} onClick={() => { setPosition((index) => Math.max(0, index - 1)); resetQuestion(); }}><ChevronLeft size={17} /> Oldingi so‘z</button><span>{position + 1} / {sessionWords.length}</span><span className="vocabulary-next-hint">Baholang, keyingi so‘z ochiladi <ChevronRight size={15} /></span></div>}
+              {lessonStarted && !lessonFinished && <div className="vocabulary-pager"><button type="button" disabled={position === 0} onClick={() => { setPosition((index) => Math.max(0, index - 1)); resetQuestion(); }}><ChevronLeft size={17} /> Oldingi so‘z</button><span>{position + 1} / {sessionWords.length}</span><span className="vocabulary-next-hint">Baholang, keyingi kartochka ochiladi <ChevronRight size={15} /></span></div>}
               <p className="vocabulary-source-note">Javob va eslab qolish belgisi ushbu brauzerda saqlanadi. Misollar o‘quv mashqi uchun, rasmiy IELTS savollari emas.</p>
             </>
           ) : (
