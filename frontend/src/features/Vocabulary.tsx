@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Search,
   Sparkles,
+  Target,
 } from "lucide-react";
 import { PageTitle } from "../components/ui";
 import vocabulary from "../data/ieltsVocabulary.json";
@@ -16,8 +17,9 @@ import "./vocabulary.css";
 
 type Word = (typeof vocabulary)[number];
 type Mark = "known" | "review";
-type Mode = "lesson" | "dictionary";
+type Mode = "lesson" | "quiz" | "dictionary";
 const STORAGE_KEY = "practiceielts-vocabulary-marks-v1";
+const wordsById = new Map(vocabulary.map((word) => [word.id, word]));
 
 function readMarks(): Record<string, Mark> {
   try {
@@ -53,63 +55,76 @@ export function Vocabulary() {
   const [position, setPosition] = useState(0);
   const [lessonStarted, setLessonStarted] = useState(false);
   const [reviewOnly, setReviewOnly] = useState(false);
-  const [answer, setAnswer] = useState("");
-  const [checked, setChecked] = useState(false);
-  const feedbackRef = useRef<HTMLDivElement>(null);
+  const [quizQueue, setQuizQueue] = useState<string[]>([]);
+  const [quizPosition, setQuizPosition] = useState(0);
+  const [quizStarted, setQuizStarted] = useState(false);
+  const [quizAnswer, setQuizAnswer] = useState("");
+  const [quizChecked, setQuizChecked] = useState(false);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizWrongIds, setQuizWrongIds] = useState<string[]>([]);
+  const quizFeedbackRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(marks));
     } catch {
-      // The lesson still works if browser storage is unavailable.
+      // Learning marks remain usable when browser storage is unavailable.
     }
   }, [marks]);
 
   useEffect(() => {
-    if (!checked) return;
+    if (!quizChecked) return;
     requestAnimationFrame(() => {
-      feedbackRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      feedbackRef.current?.focus({ preventScroll: true });
+      quizFeedbackRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      quizFeedbackRef.current?.focus({ preventScroll: true });
     });
-  }, [checked]);
+  }, [quizChecked]);
 
   const allDayWords = useMemo(() => vocabulary.filter((entry) => entry.day === day), [day]);
-  const sessionWords = useMemo(
+  const lessonWords = useMemo(
     () => reviewOnly ? allDayWords.filter((word) => marks[word.id] === "review") : allDayWords,
     [allDayWords, marks, reviewOnly],
   );
-  const currentWord = sessionWords[position];
-  const days = useMemo(
-    () =>
-      Array.from({ length: 50 }, (_, index) => {
-        const number = index + 1;
-        const words = vocabulary.filter((entry) => entry.day === number);
-        return {
-          number,
-          topic: words[0]?.topic || `Kun ${number}`,
-          count: words.length,
-          known: words.filter((word) => marks[word.id] === "known").length,
-        };
-      }),
-    [marks],
-  );
-  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const currentWord = lessonWords[position];
+  const learnedWords = useMemo(() => allDayWords.filter((word) => marks[word.id] === "known"), [allDayWords, marks]);
+  const quizWords = quizQueue.map((id) => wordsById.get(id)).filter((word): word is Word => Boolean(word));
+  const quizWord = quizWords[quizPosition];
   const visibleWords = useMemo(() => vocabulary.filter((word) => {
     const matchesQuery =
-      !normalizedQuery ||
+      !query.trim() ||
       [word.word, word.translation, word.definition, word.synonyms, word.topic]
-        .join(" ").toLocaleLowerCase().includes(normalizedQuery);
+        .join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
     return matchesQuery && (filter === "all" || marks[word.id] === filter);
-  }), [filter, marks, normalizedQuery]);
+  }), [filter, marks, query]);
+
+  const days = useMemo(
+    () => Array.from({ length: 50 }, (_, index) => {
+      const number = index + 1;
+      const words = vocabulary.filter((entry) => entry.day === number);
+      return {
+        number,
+        topic: words[0]?.topic || `Kun ${number}`,
+        count: words.length,
+        known: words.filter((word) => marks[word.id] === "known").length,
+      };
+    }),
+    [marks],
+  );
   const dayInfo = days[day - 1];
   const totalKnown = Object.values(marks).filter((mark) => mark === "known").length;
-  const dayKnown = allDayWords.filter((word) => marks[word.id] === "known").length;
+  const dayKnown = learnedWords.length;
   const dayProgress = allDayWords.length ? Math.round((dayKnown / allDayWords.length) * 100) : 0;
-  const isAnswerCorrect = currentWord ? matchesTranslation(answer, currentWord.translation) : false;
+  const reviewCount = allDayWords.filter((word) => marks[word.id] === "review").length;
+  const lessonFinished = position >= lessonWords.length;
+  const quizAnswerCorrect = quizWord ? matchesTranslation(quizAnswer, quizWord.translation) : false;
+  const quizFinished = quizPosition >= quizWords.length;
 
-  function resetQuestion() {
-    setAnswer("");
-    setChecked(false);
+  function resetQuiz() {
+    setQuizPosition(0);
+    setQuizAnswer("");
+    setQuizChecked(false);
+    setQuizScore(0);
+    setQuizWrongIds([]);
   }
 
   function chooseDay(number: number) {
@@ -118,21 +133,15 @@ export function Vocabulary() {
     setLessonStarted(false);
     setReviewOnly(false);
     setRevealed({});
-    resetQuestion();
-  }
-
-  function checkAnswer(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!answer.trim() || !currentWord) return;
-    setChecked(true);
-    setRevealed((previous) => ({ ...previous, [currentWord.id]: true }));
+    setQuizQueue([]);
+    setQuizStarted(false);
+    resetQuiz();
   }
 
   function rateWord(mark: Mark) {
     if (!currentWord) return;
     setMarks((previous) => ({ ...previous, [currentWord.id]: mark }));
     setPosition((index) => (reviewOnly && mark === "known" ? index : index + 1));
-    resetQuestion();
   }
 
   function startReview() {
@@ -140,24 +149,56 @@ export function Vocabulary() {
     setPosition(0);
     setLessonStarted(true);
     setRevealed({});
-    resetQuestion();
   }
 
-  const lessonFinished = position >= sessionWords.length;
-  const reviewCount = allDayWords.filter((word) => marks[word.id] === "review").length;
+  function startQuiz() {
+    const queue = learnedWords.map((word) => word.id);
+    setQuizQueue(queue);
+    setQuizStarted(true);
+    setQuizPosition(0);
+    setQuizAnswer("");
+    setQuizChecked(false);
+    setQuizScore(0);
+    setQuizWrongIds([]);
+  }
+
+  function restartQuiz() {
+    setQuizStarted(true);
+    resetQuiz();
+  }
+
+  function checkQuizAnswer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!quizAnswer.trim() || !quizWord || quizChecked) return;
+    const correct = matchesTranslation(quizAnswer, quizWord.translation);
+    setQuizChecked(true);
+    if (correct) setQuizScore((score) => score + 1);
+    else {
+      setQuizWrongIds((ids) => [...ids, quizWord.id]);
+      setMarks((previous) => ({ ...previous, [quizWord.id]: "review" }));
+    }
+  }
+
+  function nextQuizQuestion() {
+    setQuizPosition((index) => index + 1);
+    setQuizAnswer("");
+    setQuizChecked(false);
+  }
+
+  const reviewTotal = Object.values(marks).filter((mark) => mark === "review").length;
 
   return (
     <div className="vocabulary-page">
       <PageTitle
         eyebrow="ENGLISH • O‘ZBEK"
         title="50 kunda IELTS lug‘ati"
-        description="So‘zni yoddan eslang, javobingizni tekshiring va qiyinlarini qayta mashq qiling."
+        description="So‘zlarni o‘rganing, eslab qolganlaringizni tekshiring yoki lug‘atdan qidiring."
         action={<a className="button vocabulary-download" href="/resources/ielts-50-day-vocabulary.pdf" download><Download size={17} /> PDF nusxa</a>}
       />
 
       <section className="vocabulary-overview" aria-label="Lug‘atdagi umumiy holat">
         <div className="vocabulary-overview-icon"><BookOpenCheck size={23} /></div>
-        <div className="vocabulary-overview-copy"><strong>{totalKnown} <span>/ 1 000</span></strong><small>Esimda deb belgilangan</small></div>
+        <div className="vocabulary-overview-copy"><strong>{totalKnown} <span>/ 1 000</span></strong><small>Esimda qoldi deb belgilangan</small></div>
         <div className="vocabulary-overview-track" aria-label={`${Math.round(totalKnown / 10)} foiz bajarildi`}><i style={{ width: `${Math.min(100, totalKnown / 10)}%` }} /></div>
         <span className="vocabulary-overview-note"><Sparkles size={15} /> Har kuni oz-ozdan</span>
       </section>
@@ -184,82 +225,84 @@ export function Vocabulary() {
             {dayMenuOpen && <div className="vocabulary-day-menu">{days.map((item) => <button type="button" key={item.number} onClick={() => { chooseDay(item.number); setDayMenuOpen(false); }}>Kun {item.number} · {item.topic}</button>)}</div>}
           </div>
 
-          <div className="vocabulary-mode-tabs" role="group" aria-label="Lug‘at rejimi">
-            <button type="button" aria-pressed={mode === "lesson"} className={mode === "lesson" ? "active" : ""} onClick={() => { setMode("lesson"); setPosition(0); setLessonStarted(false); setReviewOnly(false); setRevealed({}); resetQuestion(); }}><Sparkles size={16} /> Dars: 20 ta so‘z</button>
-            <button type="button" aria-pressed={mode === "dictionary"} className={mode === "dictionary" ? "active" : ""} onClick={() => setMode("dictionary")}><Search size={16} /> Lug‘atdan qidirish</button>
+          <div className="vocabulary-mode-tabs" role="group" aria-label="Lug‘at bo‘limi">
+            <button type="button" aria-pressed={mode === "lesson"} className={mode === "lesson" ? "active" : ""} onClick={() => { setMode("lesson"); setPosition(0); setLessonStarted(false); setReviewOnly(false); setRevealed({}); }}><BookOpenCheck size={16} /> O‘rganish</button>
+            <button type="button" aria-pressed={mode === "quiz"} className={mode === "quiz" ? "active" : ""} onClick={() => { setMode("quiz"); setQuizStarted(false); setQuizQueue([]); resetQuiz(); }}><Target size={16} /> Tekshirish</button>
+            <button type="button" aria-pressed={mode === "dictionary"} className={mode === "dictionary" ? "active" : ""} onClick={() => setMode("dictionary")}><Search size={16} /> Qidirish</button>
           </div>
 
           {mode === "lesson" ? (
             <>
               <div className="vocabulary-study-heading">
-                <div><span className="vocabulary-kicker">{reviewOnly ? "QAYTA MASHQ" : `KUN ${String(day).padStart(2, "0")} · KUNLIK DARS`}</span><h2>{dayInfo?.topic}</h2><p>{reviewOnly ? "Qayta ko‘rish uchun belgilagan so‘zlaringiz." : "Avval tarjimani xotiradan toping, keyin javobni tekshiring."}</p></div>
+                <div><span className="vocabulary-kicker">{reviewOnly ? "QAYTA MASHQ" : `KUN ${String(day).padStart(2, "0")} · O‘RGANISH`}</span><h2>{dayInfo?.topic}</h2><p>{reviewOnly ? "Qayta ko‘rish uchun belgilagan so‘zlaringiz." : "Kartani bosing, ma’nosi va misolini ko‘rib o‘rganing."}</p></div>
                 <span className="vocabulary-day-progress">{dayProgress}%</span>
               </div>
-              <div className="vocabulary-progress-line"><i style={{ width: `${Math.min(100, (position / Math.max(sessionWords.length, 1)) * 100)}%` }} /></div>
+              <div className="vocabulary-progress-line"><i style={{ width: `${Math.min(100, (position / Math.max(lessonWords.length, 1)) * 100)}%` }} /></div>
 
               {!lessonStarted ? (
                 <section className="vocabulary-start-screen">
                   <span className="vocabulary-start-icon"><BookOpenCheck size={28} /></span>
                   <span className="vocabulary-kicker">KUN {String(day).padStart(2, "0")} · IELTS VOCABULARY</span>
                   <h3>{dayInfo?.topic}</h3>
-                  <p>20 ta kartochkani bittalab o‘rganing. Avval tarjimani eslang, javobingizni tekshiring, keyin keyingi kartochkaga o‘ting.</p>
+                  <p>Bugungi 20 ta kartani bittalab ko‘ring. Inglizcha so‘zni o‘qing, kartani ochib o‘zbekcha ma’nosi, izohi va misolini o‘rganing.</p>
                   <div className="vocabulary-start-stats"><span><strong>20</strong><small>so‘z</small></span><span><strong>{dayKnown}</strong><small>esimda</small></span><span><strong>{reviewCount}</strong><small>qayta ko‘rish</small></span></div>
-                  <button type="button" className="button primary vocabulary-start-button" onClick={() => { setLessonStarted(true); setPosition(0); setReviewOnly(false); setRevealed({}); resetQuestion(); }}><Sparkles size={17} /> Darsni boshlash <ChevronRight size={17} /></button>
-                  <small className="vocabulary-start-hint">Har bir kartochkadan so‘ng “Esimda qoldi” yoki “Qayta ko‘raman” deb tanlang.</small>
+                  <button type="button" className="button primary vocabulary-start-button" onClick={() => { setLessonStarted(true); setPosition(0); setReviewOnly(false); setRevealed({}); }}><Sparkles size={17} /> Darsni boshlash <ChevronRight size={17} /></button>
+                  <small className="vocabulary-start-hint">Kartani oching, so‘ng “Esimda qoldi” yoki “Qayta ko‘raman” holatini tanlang.</small>
                 </section>
               ) : lessonFinished ? (
                 <section className="vocabulary-lesson-finished" aria-live="polite">
                   <span className="vocabulary-finished-icon"><Check size={27} /></span>
                   <span className="vocabulary-kicker">{reviewOnly ? "TAKRORLASH TUGALLANDI" : "BUGUNGI DARS TUGADI"}</span>
-                  <h3>{reviewOnly ? "Qayta ko‘rib chiqdingiz." : "20 ta so‘zning barchasini ko‘rib chiqdingiz."}</h3>
-                  <p>{reviewCount ? `${reviewCount} ta so‘zni yana bir bor mashq qilsangiz yaxshi bo‘ladi.` : "Ajoyib! Bugungi so‘zlarda qayta ko‘rish belgisi qolmadi."}</p>
+                  <h3>{reviewOnly ? "Qayta ko‘rib chiqdingiz." : "Bugungi 20 ta kartani ko‘rib chiqdingiz."}</h3>
+                  <p>{reviewCount ? `${reviewCount} ta so‘zni yana bir bor ko‘rib chiqing.` : "Yangi kunni boshlashga tayyorsiz."}</p>
                   <div className="vocabulary-finished-actions">
-                    {!reviewOnly && reviewCount > 0 && <button type="button" className="button primary" onClick={startReview}><RotateCcw size={16} /> Qiyin so‘zlarni takrorlash ({reviewCount})</button>}
-                    {reviewOnly ? <button type="button" className="button primary" onClick={() => { setReviewOnly(false); setPosition(0); setLessonStarted(true); setRevealed({}); resetQuestion(); }}>Darsga qaytish</button> : <button type="button" className="button" onClick={() => { setPosition(0); setLessonStarted(true); setRevealed({}); resetQuestion(); }}>Darsni yana takrorlash</button>}
+                    {!reviewOnly && reviewCount > 0 && <button type="button" className="button primary" onClick={startReview}><RotateCcw size={16} /> Qayta ko‘rish ({reviewCount})</button>}
+                    {reviewOnly ? <button type="button" className="button primary" onClick={() => { setReviewOnly(false); setPosition(0); setLessonStarted(true); setRevealed({}); }}>Darsga qaytish</button> : <button type="button" className="button" onClick={() => { setPosition(0); setLessonStarted(true); setRevealed({}); }}>Kartalarni yana ko‘rish</button>}
                     <button type="button" className="button" onClick={() => chooseDay(Math.min(50, day + 1))} disabled={day === 50}>Keyingi kun <ChevronRight size={16} /></button>
                   </div>
                 </section>
               ) : currentWord ? (
                 <article key={currentWord.id} className="vocabulary-lesson-card">
-                  <div className="vocabulary-lesson-card-top"><span>{reviewOnly ? "QAYTA MASHQ" : `SO‘Z ${position + 1} / ${sessionWords.length}`}</span><span>{currentWord.topic}</span></div>
+                  <div className="vocabulary-lesson-card-top"><span>{reviewOnly ? "QAYTA MASHQ" : `SO‘Z ${position + 1} / ${lessonWords.length}`}</span><span>{currentWord.topic}</span></div>
                   <h3 className="vocabulary-lesson-word">{currentWord.word}</h3>
-                  <p className="vocabulary-lesson-prompt">O‘zbekcha ma’nosini eslashga harakat qiling.</p>
-                  {!checked && !revealed[currentWord.id] && <form className="vocabulary-answer-form" onSubmit={checkAnswer}>
-                    <label htmlFor="vocabulary-answer">Tarjimasini yozing <span>(yoki javobni oching)</span></label>
-                    <div className="vocabulary-answer-row"><input id="vocabulary-answer" autoComplete="off" value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Masalan: egallamoq" /><button className="button primary" type="submit" disabled={!answer.trim()}>Javobni tekshirish</button></div>
-                    <button className="vocabulary-reveal-answer" type="button" onClick={() => setRevealed((previous) => ({ ...previous, [currentWord.id]: true }))}>Javobni ochish</button>
-                  </form>}
-                  {checked && <div ref={feedbackRef} tabIndex={-1} role="status" className={`vocabulary-answer-feedback ${isAnswerCorrect ? "correct" : "incorrect"}`} aria-live="assertive"><strong>{isAnswerCorrect ? "Javobingiz to‘g‘ri!" : "Bu javob mos kelmadi."}</strong><span>Javob: <b>{currentWord.translation}</b></span><small>{isAnswerCorrect ? "So‘zni eslab qoldingizmi? Baholab, keyingi kartochkaga o‘ting." : "Izoh va misolni ko‘rib chiqing, so‘ng qayta ko‘rish deb belgilang."}</small></div>}
-                  {revealed[currentWord.id] && <div className="vocabulary-lesson-back">
+                  {!revealed[currentWord.id] ? (
+                    <button type="button" className="vocabulary-reveal-answer" onClick={() => setRevealed((previous) => ({ ...previous, [currentWord.id]: true }))}>Tarjima va misolni ko‘rish</button>
+                  ) : <div className="vocabulary-lesson-back">
                     <div className="vocabulary-lesson-translation">{currentWord.translation}</div>
-                    <p><strong>Izoh</strong>{currentWord.definition}</p>
-                    <p><strong>Sinonimlar</strong>{currentWord.synonyms}</p>
-                    <p><strong>So‘z birikmalari</strong>{currentWord.collocations}</p>
-                    <p><strong>So‘z oilasi</strong>{currentWord.wordFamily}</p>
-                    <p className="vocabulary-example"><strong>Misol</strong><span>{currentWord.example}</span></p>
+                    <p><strong>Izoh</strong>{currentWord.definition}</p><p><strong>Sinonimlar</strong>{currentWord.synonyms}</p><p><strong>So‘z birikmalari</strong>{currentWord.collocations}</p><p><strong>So‘z oilasi</strong>{currentWord.wordFamily}</p><p className="vocabulary-example"><strong>Misol</strong><span>{currentWord.example}</span></p>
                   </div>}
-                  {revealed[currentWord.id] && <div className="vocabulary-rate-actions"><span>Bu so‘z esingizda qoldimi?</span><div><button type="button" onClick={() => rateWord("review")}><RotateCcw size={16} /> Qayta ko‘raman</button><button type="button" className="known" onClick={() => rateWord("known")}><Check size={17} /> Esimda qoldi</button></div></div>}
+                  {revealed[currentWord.id] && <div className="vocabulary-rate-actions"><span>Bu so‘z uchun holatni tanlang</span><div><button type="button" className={marks[currentWord.id] === "review" ? "chosen" : ""} onClick={() => rateWord("review")}><RotateCcw size={16} /> Qayta ko‘raman</button><button type="button" className={`known ${marks[currentWord.id] === "known" ? "chosen known" : ""}`} onClick={() => rateWord("known")}><Check size={17} /> Esimda qoldi</button></div></div>}
                 </article>
               ) : <div className="vocabulary-empty"><strong>Bu kun uchun so‘z topilmadi.</strong></div>}
 
-              {lessonStarted && !lessonFinished && <div className="vocabulary-pager"><button type="button" disabled={position === 0} onClick={() => { setPosition((index) => Math.max(0, index - 1)); resetQuestion(); }}><ChevronLeft size={17} /> Oldingi so‘z</button><span>{position + 1} / {sessionWords.length}</span><span className="vocabulary-next-hint">Baholang, keyingi kartochka ochiladi <ChevronRight size={15} /></span></div>}
-              <p className="vocabulary-source-note">Javob va eslab qolish belgisi ushbu brauzerda saqlanadi. Misollar o‘quv mashqi uchun, rasmiy IELTS savollari emas.</p>
+              {lessonStarted && !lessonFinished && <div className="vocabulary-pager"><button type="button" disabled={position === 0} onClick={() => setPosition((index) => Math.max(0, index - 1))}><ChevronLeft size={17} /> Oldingi</button><span>{position + 1} / {lessonWords.length}</span><button type="button" onClick={() => setPosition((index) => Math.min(lessonWords.length, index + 1))}>Keyingi <ChevronRight size={17} /></button></div>}
+              <p className="vocabulary-source-note">Holatlar brauzeringizda saqlanadi. Misollar o‘quv mashqi uchun, rasmiy IELTS savollari emas.</p>
+            </>
+          ) : mode === "quiz" ? (
+            <>
+              <div className="vocabulary-study-heading"><div><span className="vocabulary-kicker">KUN {String(day).padStart(2, "0")} · TEKSHIRUV</span><h2>O‘rganganlaringizni tekshiring</h2><p>Bu sinovda faqat “Esimda qoldi” deb belgilagan so‘zlaringiz chiqadi.</p></div><span className="vocabulary-day-progress">{learnedWords.length} ta</span></div>
+              {!quizStarted ? (
+                <section className="vocabulary-start-screen vocabulary-quiz-start">
+                  <span className="vocabulary-start-icon"><Target size={28} /></span><span className="vocabulary-kicker">O‘ZINGIZNI SINAB KO‘RING</span>
+                  <h3>{dayInfo?.topic}</h3>
+                  {learnedWords.length ? <><p>{learnedWords.length} ta o‘rgangan so‘zingizning o‘zbekcha ma’nosini eslab yozing. Javobingiz darhol tekshiriladi.</p><div className="vocabulary-start-stats"><span><strong>{learnedWords.length}</strong><small>savol</small></span><span><strong>{reviewTotal}</strong><small>qayta ko‘rish</small></span></div><button type="button" className="button primary vocabulary-start-button" onClick={startQuiz}><Target size={17} /> Tekshiruvni boshlash <ChevronRight size={17} /></button></> : <><p>Bu kunda hali “Esimda qoldi” deb belgilangan so‘z yo‘q. Avval darsda so‘zlarni o‘rganib, holatini belgilang.</p><button type="button" className="button primary vocabulary-start-button" onClick={() => setMode("lesson")}><BookOpenCheck size={17} /> Darsga o‘tish</button></>}
+                </section>
+              ) : quizFinished ? (
+                <section className="vocabulary-lesson-finished" aria-live="polite"><span className="vocabulary-finished-icon"><Check size={27} /></span><span className="vocabulary-kicker">TEKSHIRUV TUGADI</span><h3>{quizScore} / {quizWords.length} ta to‘g‘ri</h3><p>{quizWrongIds.length ? `${quizWrongIds.length} ta so‘z “Qayta ko‘raman” holatiga o‘tkazildi.` : "Ajoyib, hammasini to‘g‘ri topdingiz!"}</p><div className="vocabulary-finished-actions">{quizWrongIds.length > 0 && <button type="button" className="button primary" onClick={() => { setMode("lesson"); startReview(); }}><RotateCcw size={16} /> Xatolarni qayta o‘rganish</button>}<button type="button" className="button" onClick={restartQuiz}>Yana bir bor tekshirish</button><button type="button" className="button" onClick={() => setMode("lesson")}>Darsga qaytish</button></div></section>
+              ) : quizWord ? (
+                <article key={quizWord.id} className="vocabulary-lesson-card vocabulary-quiz-card">
+                  <div className="vocabulary-lesson-card-top"><span>SAVOL {quizPosition + 1} / {quizWords.length}</span><span>To‘g‘ri: {quizScore}</span></div>
+                  <h3 className="vocabulary-lesson-word">{quizWord.word}</h3>
+                  {!quizChecked ? <form className="vocabulary-answer-form" onSubmit={checkQuizAnswer}><label htmlFor="vocabulary-quiz-answer">O‘zbekcha ma’nosini yozing</label><div className="vocabulary-answer-row"><input id="vocabulary-quiz-answer" autoComplete="off" value={quizAnswer} onChange={(event) => setQuizAnswer(event.target.value)} placeholder="Tarjimasini yozing" /><button className="button primary" type="submit" disabled={!quizAnswer.trim()}>Tekshirish</button></div></form> : <><div ref={quizFeedbackRef} tabIndex={-1} role="status" className={`vocabulary-answer-feedback ${quizAnswerCorrect ? "correct" : "incorrect"}`} aria-live="assertive"><strong>{quizAnswerCorrect ? "To‘g‘ri javob!" : "Bu safar topilmadi."}</strong><span>Javob: <b>{quizWord.translation}</b></span><small>{quizAnswerCorrect ? "So‘z yodingizda ekan." : "Bu so‘z qayta ko‘rish ro‘yxatiga qo‘shildi."}</small></div><button type="button" className="button primary vocabulary-quiz-next" onClick={nextQuizQuestion}>{quizPosition + 1 === quizWords.length ? "Natijani ko‘rish" : "Keyingi savol"} <ChevronRight size={17} /></button></>}
+                </article>
+              ) : null}
+              <p className="vocabulary-source-note">Noto‘g‘ri javoblar “Qayta ko‘raman” ro‘yxatiga qo‘shiladi. Holatlar brauzeringizda saqlanadi.</p>
             </>
           ) : (
             <>
               <div className="vocabulary-study-heading"><div><span className="vocabulary-kicker">50 KUN · 1 000 SO‘Z</span><h2>Lug‘atdan qidirish</h2><p>So‘z, tarjima yoki izoh bo‘yicha toping.</p></div></div>
-              <div className="vocabulary-controls">
-                <label className="vocabulary-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="So‘z yoki tarjimani qidiring" aria-label="Lug‘atdan so‘z qidirish" /><kbd>/</kbd></label>
-                <div className="vocabulary-filters" aria-label="So‘zlar filtri">{([["all", "Hammasi"], ["review", "Takrorlash"], ["known", "Esimda"]] as const).map(([value, label]) => <button type="button" key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}{value === "review" && <span>{Object.values(marks).filter((mark) => mark === "review").length}</span>}</button>)}</div>
-              </div>
-              {visibleWords.length ? <div className="vocabulary-cards">{visibleWords.map((word) => <article className={`vocabulary-card ${marks[word.id] || ""}`} key={word.id}>
-                <button type="button" className="vocabulary-card-reveal" onClick={() => setRevealed((previous) => ({ ...previous, [word.id]: !previous[word.id] }))} aria-expanded={Boolean(revealed[word.id])}>
-                  <span className="vocabulary-word-top"><span>Kun {word.day} · #{String(word.number).padStart(2, "0")}</span>{marks[word.id] === "known" && <span className="vocabulary-known-badge"><Check size={13} /> Esimda</span>}{marks[word.id] === "review" && <span className="vocabulary-review-badge"><RotateCcw size={12} /> Takrorlash</span>}</span>
-                  <strong className="vocabulary-word">{word.word}</strong><span className={revealed[word.id] ? "vocabulary-translation" : "vocabulary-tap-hint"}>{revealed[word.id] ? word.translation : "Ma’nosini ko‘rish"}</span>
-                </button>
-                {revealed[word.id] && <div className="vocabulary-card-details"><p><strong>Izoh</strong>{word.definition}</p><p><strong>Sinonimlar</strong>{word.synonyms}</p><p><strong>So‘z birikmalari</strong>{word.collocations}</p><p><strong>So‘z oilasi</strong>{word.wordFamily}</p><p className="vocabulary-example"><strong>Misol</strong><span>{word.example}</span></p></div>}
-                <div className="vocabulary-card-actions"><button type="button" onClick={() => setMarks((previous) => ({ ...previous, [word.id]: "review" }))}><RotateCcw size={15} /> Qayta ko‘raman</button><button type="button" className="known" onClick={() => setMarks((previous) => ({ ...previous, [word.id]: "known" }))}><Check size={16} /> Esimda qoldi</button></div>
-              </article>)}</div> : <div className="vocabulary-empty"><Search size={22} /><strong>So‘z topilmadi</strong><span>Boshqa qidiruv so‘zini kiriting yoki filtrni almashtiring.</span></div>}
+              <div className="vocabulary-controls"><label className="vocabulary-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="So‘z yoki tarjimani qidiring" aria-label="Lug‘atdan so‘z qidirish" /><kbd>/</kbd></label><div className="vocabulary-filters" aria-label="So‘zlar filtri">{([ ["all", "Hammasi"], ["review", "Takrorlash"], ["known", "Esimda"] ] as const).map(([value, label]) => <button type="button" key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}{value === "review" && <span>{reviewTotal}</span>}</button>)}</div></div>
+              {visibleWords.length ? <div className="vocabulary-cards">{visibleWords.map((word) => <article className={`vocabulary-card ${marks[word.id] || ""}`} key={word.id}><button type="button" className="vocabulary-card-reveal" onClick={() => setRevealed((previous) => ({ ...previous, [word.id]: !previous[word.id] }))} aria-expanded={Boolean(revealed[word.id])}><span className="vocabulary-word-top"><span>Kun {word.day} · #{String(word.number).padStart(2, "0")}</span>{marks[word.id] === "known" && <span className="vocabulary-known-badge"><Check size={13} /> Esimda</span>}{marks[word.id] === "review" && <span className="vocabulary-review-badge"><RotateCcw size={12} /> Takrorlash</span>}</span><strong className="vocabulary-word">{word.word}</strong><span className={revealed[word.id] ? "vocabulary-translation" : "vocabulary-tap-hint"}>{revealed[word.id] ? word.translation : "Ma’nosini ko‘rish"}</span></button>{revealed[word.id] && <div className="vocabulary-card-details"><p><strong>Izoh</strong>{word.definition}</p><p><strong>Sinonimlar</strong>{word.synonyms}</p><p><strong>So‘z birikmalari</strong>{word.collocations}</p><p><strong>So‘z oilasi</strong>{word.wordFamily}</p><p className="vocabulary-example"><strong>Misol</strong><span>{word.example}</span></p></div>}<div className="vocabulary-card-actions"><button type="button" onClick={() => setMarks((previous) => ({ ...previous, [word.id]: "review" }))}><RotateCcw size={15} /> Qayta ko‘raman</button><button type="button" className="known" onClick={() => setMarks((previous) => ({ ...previous, [word.id]: "known" }))}><Check size={16} /> Esimda qoldi</button></div></article>)}</div> : <div className="vocabulary-empty"><Search size={22} /><strong>So‘z topilmadi</strong><span>Boshqa qidiruv so‘zini kiriting yoki filtrni almashtiring.</span></div>}
               <p className="vocabulary-source-note">Lug‘atdagi belgilar brauzeringizda saqlanadi; rasmiy IELTS savollari emas.</p>
             </>
           )}
