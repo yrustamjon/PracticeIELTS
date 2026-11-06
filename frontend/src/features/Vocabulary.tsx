@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   BookOpenCheck,
   Check,
@@ -55,6 +55,7 @@ export function Vocabulary() {
   const [reviewOnly, setReviewOnly] = useState(false);
   const [answer, setAnswer] = useState("");
   const [checked, setChecked] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -63,6 +64,14 @@ export function Vocabulary() {
       // The lesson still works if browser storage is unavailable.
     }
   }, [marks]);
+
+  useEffect(() => {
+    if (!checked) return;
+    requestAnimationFrame(() => {
+      feedbackRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      feedbackRef.current?.focus({ preventScroll: true });
+    });
+  }, [checked]);
 
   const allDayWords = useMemo(() => vocabulary.filter((entry) => entry.day === day), [day]);
   const sessionWords = useMemo(
@@ -217,10 +226,10 @@ export function Vocabulary() {
                   <p className="vocabulary-lesson-prompt">O‘zbekcha ma’nosini eslashga harakat qiling.</p>
                   {!checked && !revealed[currentWord.id] && <form className="vocabulary-answer-form" onSubmit={checkAnswer}>
                     <label htmlFor="vocabulary-answer">Tarjimasini yozing <span>(yoki javobni oching)</span></label>
-                    <div className="vocabulary-answer-row"><input id="vocabulary-answer" autoComplete="off" value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Masalan: egallamoq" /><button className="button primary" type="submit" disabled={!answer.trim()}>Tekshirish</button></div>
+                    <div className="vocabulary-answer-row"><input id="vocabulary-answer" autoComplete="off" value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Masalan: egallamoq" /><button className="button primary" type="submit" disabled={!answer.trim()}>Javobni tekshirish</button></div>
                     <button className="vocabulary-reveal-answer" type="button" onClick={() => setRevealed((previous) => ({ ...previous, [currentWord.id]: true }))}>Javobni ochish</button>
                   </form>}
-                  {checked && <div className={`vocabulary-answer-feedback ${isAnswerCorrect ? "correct" : "incorrect"}`} aria-live="polite"><strong>{isAnswerCorrect ? "To‘g‘ri topdingiz!" : "Javobni birga ko‘rib chiqamiz."}</strong>{!isAnswerCorrect && <span>Berilgan tarjima: <b>{currentWord.translation}</b></span>}</div>}
+                  {checked && <div ref={feedbackRef} tabIndex={-1} role="status" className={`vocabulary-answer-feedback ${isAnswerCorrect ? "correct" : "incorrect"}`} aria-live="assertive"><strong>{isAnswerCorrect ? "Javobingiz to‘g‘ri!" : "Bu javob mos kelmadi."}</strong><span>Javob: <b>{currentWord.translation}</b></span><small>{isAnswerCorrect ? "So‘zni eslab qoldingizmi? Baholab, keyingi kartochkaga o‘ting." : "Izoh va misolni ko‘rib chiqing, so‘ng qayta ko‘rish deb belgilang."}</small></div>}
                   {revealed[currentWord.id] && <div className="vocabulary-lesson-back">
                     <div className="vocabulary-lesson-translation">{currentWord.translation}</div>
                     <p><strong>Izoh</strong>{currentWord.definition}</p>
