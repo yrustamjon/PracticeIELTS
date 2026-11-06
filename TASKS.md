@@ -749,3 +749,9 @@ Read PROJECT_PLAN.md before implementing. Each entry is Project PracticeIELTS �
 - Status: Completed and verified live (2026-10-29, Cambridge14 complete-book release).
 - Scope: validated unordered_sets of question numbers within free-text notes/table/answers; same distinct source-key pool, one mark per normalized answer, retain word limits; legacy content without explicit sets unchanged. No migration/source-key inference/historical-version updates.
 - Evidence: reverse/duplicate-normalized/word-limit passage and Full integration/schema tests passed; all243backendcases covered240passed3skip/all123frontendpassed across bounded groups. Cambridge14all4stage1440/390/32040of40 and all4actualsiteFull/admin acceptance passed. Scorer released with complete14book, no migration/legacy version changes. Rollback backups/before-reading-book-14-20261029T122103Z/.
+
+## VOCABULARY-50-01 — User-supplied IELTS English–Uzbek vocabulary
+- Status: Completed (source parsed and frontend production build verified, 2026-11-06)
+- Scope: Add the supplied 50-day, 1,000-entry vocabulary PDF to the learner site. Keep source entries as structured bundled JSON; make a responsive desktop day navigator and phone day picker, word search, meaning/example reveal, local known/review marks, progress summaries and original PDF download. Do not claim official IELTS questions or server-side progress persistence.
+- Acceptance: 50 days and 20 unique entries/day; every entry includes English headword, Uzbek translation, definition, near synonyms, collocations, word family and example; reachable from learner navigation and dashboard; usable by keyboard and responsive on phone and PC.
+- Verification: PDF parser checked 1,000 unique words and all required fields across 50 days. Frontend TypeScript/Vite production build passed using Node 24.22.2. The default system Node 18.19.1 is below package engines and cannot run the current Vite toolchain. No test suites run.

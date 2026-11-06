@@ -38,6 +38,7 @@ import {
   AudioLines,
   UserRound,
   Users,
+  BookOpenCheck,
 } from "lucide-react";
 import { useWorkspace } from "../stores/workspace";
 import { useAuth } from "../stores/auth";
@@ -53,6 +54,7 @@ import { NestedLibrary, TestDetail } from "../features/Catalog";
 import { TestStudio } from "../features/TestStudio";
 import { Practice } from "../features/Practice";
 import { Admin } from "../features/Admin";
+import { Vocabulary } from "../features/Vocabulary";
 import {
   ProgressPage,
   Mistakes,
@@ -76,6 +78,7 @@ const links = [
   ["/dictation", "Listening Practice", Headphones],
   ["/mock-tests", "Listening Mocks", FileText],
   ["/reading", "Reading", BookOpen],
+  ["/vocabulary", "Vocabulary", BookOpenCheck],
   ["/mistakes", "Mistake Review", BookOpen],
   ["/progress", "Progress", ChartNoAxesCombined],
 ] as const;
@@ -83,6 +86,7 @@ const learnerQuickLinks = [
   ["/", "Home", House],
   ["/library", "Library", LibraryBig],
   ["/reading", "Reading", BookOpen],
+  ["/vocabulary", "Vocab", BookOpenCheck],
   ["/mock-tests", "Listen Mock", FileText],
   ["/profile", "Profile", UserRound],
 ] as const;
@@ -366,13 +370,9 @@ function Shell() {
       </main>
       <nav
         className="mobile-bottom-nav"
-        style={
-          admin
-            ? {
-                gridTemplateColumns: `repeat(${adminLinks.length}, minmax(0, 1fr))`,
-              }
-            : undefined
-        }
+        style={{
+          gridTemplateColumns: `repeat(${admin ? adminLinks.length : learnerQuickLinks.length}, minmax(0, 1fr))`,
+        }}
         aria-label="Quick navigation"
         inert={drawer || undefined}
       >
@@ -601,6 +601,7 @@ export function App() {
         <Route path="mock/:id" element={<MockPage />} />
         <Route path="mock/:id/results" element={<MockResults />} />
         <Route path="reading" element={<ReadingLibrary />} />
+        <Route path="vocabulary" element={<Vocabulary />} />
         <Route path="reading/history" element={<ReadingHistory />} />
         <Route path="reading/attempts/:id" element={<ReadingAttemptPage />} />
         <Route

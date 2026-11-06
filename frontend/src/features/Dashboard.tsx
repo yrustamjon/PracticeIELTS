@@ -10,6 +10,7 @@ import {
   Clock,
   AudioLines,
   NotebookPen,
+  BookOpenCheck,
 } from "lucide-react";
 import { api, type Progress } from "../services/api";
 import { useAuth } from "../stores/auth";
@@ -194,6 +195,14 @@ export function Dashboard() {
           text="Choose a book and test. Read a passage, answer questions and review your mistakes."
           link="Choose a Reading test"
           to="/reading"
+          color="teal"
+        />
+        <PracticeCard
+          icon={<BookOpenCheck />}
+          title="IELTS Vocabulary"
+          text="Study 1,000 English–Uzbek words across a guided 50-day plan."
+          link="Start vocabulary"
+          to="/vocabulary"
           color="teal"
         />
       </div>
