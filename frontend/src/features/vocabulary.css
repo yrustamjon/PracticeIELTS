@@ -88,6 +88,44 @@
 .vocabulary-source-note { margin: 16px 0 0; color: #8a9aa4; font-size: 10px; line-height: 1.55; }
 .vocabulary-mobile-day { display: none; }
 .vocabulary-page button:focus-visible,.vocabulary-page a:focus-visible { outline: 3px solid #128a95; outline-offset: 2px; }
+.vocabulary-mode-tabs { display: flex; gap: 6px; margin: 0 0 20px; padding: 4px; border: 1px solid #e1e9ed; border-radius: 12px; background: #f5f8f9; }
+.vocabulary-mode-tabs button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; color: #6c8390; border: 0; border-radius: 9px; background: transparent; font-size: 12px; font-weight: 750; cursor: pointer; }
+.vocabulary-mode-tabs button.active { color: #087782; background: white; box-shadow: 0 2px 7px #18384c12; }
+.vocabulary-lesson-card { overflow: hidden; max-width: 800px; margin: 0 auto; padding: clamp(20px,3.4vw,38px); border: 1px solid #dce8ec; border-radius: 19px; background: linear-gradient(145deg,#fff 0%,#fbfefe 100%); box-shadow: 0 12px 35px #18384c0b; }
+.vocabulary-lesson-card-top { display: flex; justify-content: space-between; gap: 10px; color: #7e929c; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.vocabulary-lesson-word { margin: 38px 0 7px; color: #193e52; font-size: clamp(32px,5vw,48px); line-height: 1.1; letter-spacing: -.04em; text-align: center; overflow-wrap: anywhere; }
+.vocabulary-lesson-prompt { margin: 0 0 22px; color: #718795; font-size: 14px; text-align: center; }
+.vocabulary-answer-form { display: grid; gap: 9px; max-width: 470px; margin: 0 auto 5px; }
+.vocabulary-answer-form > label { color: #4e6a78; font-size: 12px; font-weight: 750; }
+.vocabulary-answer-form > label span { color: #90a0a8; font-weight: 450; }
+.vocabulary-answer-row { display: flex; gap: 8px; }
+.vocabulary-answer-row input { flex: 1; min-width: 0; min-height: 46px; padding: 0 13px; color: #193e52; border: 1px solid #d7e3e8; border-radius: 10px; background: white; font: inherit; font-size: 15px; }
+.vocabulary-answer-row input:focus { border-color: #3699a0; outline: 3px solid #16869217; }
+.vocabulary-answer-row .button { min-width: 112px; min-height: 46px; justify-content: center; }
+.vocabulary-answer-row .button:disabled { opacity: .5; cursor: not-allowed; }
+.vocabulary-reveal-answer { justify-self: center; min-height: 38px; padding: 0 12px; color: #147a83; border: 0; border-radius: 8px; background: #eff8f8; font-size: 12px; font-weight: 750; cursor: pointer; }
+.vocabulary-answer-feedback { display: grid; gap: 5px; max-width: 470px; margin: 10px auto 15px; padding: 12px 14px; border: 1px solid; border-radius: 10px; font-size: 13px; }
+.vocabulary-answer-feedback.correct { color: #147265; border-color: #cae8de; background: #eff9f4; }
+.vocabulary-answer-feedback.incorrect { color: #80632c; border-color: #eee0be; background: #fff9ea; }
+.vocabulary-answer-feedback span { font-size: 12px; }
+.vocabulary-lesson-back { max-width: 620px; margin: 20px auto 0; padding: 19px 20px; border: 1px solid #dcebef; border-radius: 13px; background: #f3f9fa; }
+.vocabulary-lesson-translation { margin-bottom: 12px; color: #087a84; font-size: 25px; font-weight: 800; letter-spacing: -.02em; text-align: center; }
+.vocabulary-lesson-back p { display: grid; gap: 4px; margin: 0; padding: 8px 0; color: #456272; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.vocabulary-lesson-back p + p { border-top: 1px solid #e2edef; }
+.vocabulary-lesson-back p strong { color: #79909c; font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+.vocabulary-lesson-back .vocabulary-example { color: #31546a; font-style: italic; }
+.vocabulary-rate-actions { display: grid; justify-items: center; gap: 11px; margin-top: 21px; }
+.vocabulary-rate-actions > span { color: #627b88; font-size: 12px; font-weight: 700; }
+.vocabulary-rate-actions > div { display: flex; justify-content: center; gap: 9px; }
+.vocabulary-rate-actions button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: 45px; padding: 0 17px; color: #86642b; border: 1px solid #f0dfbd; border-radius: 10px; background: #fff9ec; font-size: 12px; font-weight: 750; cursor: pointer; }
+.vocabulary-rate-actions button.known { color: #147569; border-color: #cbe8dd; background: #ecf8f3; }
+.vocabulary-lesson-finished { display: grid; justify-items: center; gap: 10px; padding: clamp(28px,5vw,60px) 20px; border: 1px solid #dbe9eb; border-radius: 18px; background: radial-gradient(ellipse at 50% 0%,#e5f6f3 0%,#fff 70%); text-align: center; }
+.vocabulary-finished-icon { display: grid; place-items: center; width: 55px; height: 55px; margin-bottom: 5px; color: #168373; border-radius: 17px; background: #e0f4eb; }
+.vocabulary-lesson-finished h3 { margin: 0; color: #193f52; font-size: 23px; }
+.vocabulary-lesson-finished p { max-width: 50ch; margin: 0; color: #708794; font-size: 13px; line-height: 1.6; }
+.vocabulary-finished-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
+.vocabulary-finished-actions .button { min-height: 42px; gap: 6px; font-size: 12px; }
+.vocabulary-next-hint { display: inline-flex; align-items: center; gap: 3px; color: #84959e; font-size: 11px; }
 @media (max-width: 1100px) {
   .vocabulary-workspace { grid-template-columns: minmax(205px,235px) minmax(0,1fr); gap: 16px; }
   .vocabulary-cards { gap: 9px; }
@@ -112,6 +150,26 @@
   .vocabulary-workspace { display: block; }
   .vocabulary-days { display: none; }
   .vocabulary-mobile-day { position: relative; display: block; margin-bottom: 14px; }
+  .vocabulary-mode-tabs { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 3px; margin-bottom: 15px; }
+  .vocabulary-mode-tabs button { gap: 5px; min-height: 42px; padding-inline: 5px; font-size: 10px; }
+  .vocabulary-mode-tabs button svg { width: 14px; height: 14px; }
+  .vocabulary-lesson-card { padding: 17px 14px; border-radius: 15px; }
+  .vocabulary-lesson-card-top { font-size: 9px; }
+  .vocabulary-lesson-word { margin-top: 29px; font-size: 34px; }
+  .vocabulary-lesson-prompt { margin-bottom: 18px; font-size: 12px; }
+  .vocabulary-answer-row { flex-direction: column; }
+  .vocabulary-answer-row input,.vocabulary-answer-row .button { width: 100%; min-height: 46px; }
+  .vocabulary-answer-feedback { font-size: 12px; }
+  .vocabulary-lesson-back { margin-top: 15px; padding: 14px; }
+  .vocabulary-lesson-translation { font-size: 22px; }
+  .vocabulary-rate-actions > div { display: grid; width: 100%; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+  .vocabulary-rate-actions button { min-height: 46px; gap: 5px; padding-inline: 7px; font-size: 10px; }
+  .vocabulary-lesson-finished { padding: 28px 14px; }
+  .vocabulary-lesson-finished h3 { font-size: 20px; }
+  .vocabulary-finished-actions { display: grid; width: 100%; }
+  .vocabulary-finished-actions .button { width: 100%; justify-content: center; }
+  .vocabulary-next-hint { font-size: 0; }
+  .vocabulary-next-hint svg { width: 16px; height: 16px; }
   .vocabulary-day-picker { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 58px; padding: 10px 13px; color: #21485b; border: 1px solid #dce8ec; border-radius: 12px; background: #fff; text-align: left; }
   .vocabulary-day-picker > span { display: grid; gap: 4px; }
   .vocabulary-day-picker small { color: #778e9a; font-size: 9px; font-weight: 800; letter-spacing: .12em; }
